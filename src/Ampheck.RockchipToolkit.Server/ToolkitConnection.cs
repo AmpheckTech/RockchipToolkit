@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.WebSockets;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
@@ -13,6 +14,7 @@ internal sealed class ToolkitConnection : IAsyncDisposable {
     private readonly IToolkitExecutor _executor;
     private readonly ToolkitSerialService _serial;
     private readonly SemaphoreSlim _operationGate;
+    private readonly Func<CancellationToken, ValueTask> _releaseAdbDevices;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly ILogger _logger;
     private readonly string _peer;
@@ -27,6 +29,7 @@ internal sealed class ToolkitConnection : IAsyncDisposable {
         IToolkitExecutor executor,
         ToolkitSerialService serial,
         SemaphoreSlim operationGate,
+        Func<CancellationToken, ValueTask> releaseAdbDevices,
         ILogger logger,
         string? peer,
         CancellationToken serverToken) {
@@ -35,6 +38,7 @@ internal sealed class ToolkitConnection : IAsyncDisposable {
         _executor = executor;
         _serial = serial;
         _operationGate = operationGate;
+        _releaseAdbDevices = releaseAdbDevices;
         _logger = logger;
         _peer = peer ?? "unknown";
         _stop = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
@@ -72,14 +76,38 @@ internal sealed class ToolkitConnection : IAsyncDisposable {
     }
 
     public async ValueTask DisposeAsync() {
-        foreach (var channel in _channels.Values) {
-            await channel.DisposeAsync().ConfigureAwait(false);
+        var channels = _channels.Values.ToArray();
+        _channels.Clear();
+        Exception? failure = null;
+        foreach (var channel in channels) {
+            try {
+                await channel.DisposeAsync().ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            }
         }
 
-        _channels.Clear();
-        _sendGate.Dispose();
-        _stop.Dispose();
-        _socket.Dispose();
+        try {
+            _sendGate.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _stop.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _socket.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     private async ValueTask<bool> AuthenticateAsync() {
@@ -309,6 +337,13 @@ internal sealed class ToolkitConnection : IAsyncDisposable {
                             value.Source,
                             value.Message),
                         operationStop.Token)
+                        .ConfigureAwait(false);
+                }
+
+                if (channel.Request.Operation !=
+                    ToolkitOperation.Devices) {
+                    await _releaseAdbDevices(
+                            operationStop.Token)
                         .ConfigureAwait(false);
                 }
 

@@ -53,7 +53,8 @@ internal static class DeviceProviderFactory {
         ILoggerFactory loggerFactory) {
         return new RockUsbDeviceProvider(
             new RockUsbOptions {
-                VendorId = vendorId ?? 0x2207,
+                VendorId = vendorId ??
+                    RockchipUsbCatalog.DefaultVendorId,
                 ProductId = productId
             },
             loggerFactory.CreateLogger<RockUsbDeviceProvider>());

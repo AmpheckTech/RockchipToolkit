@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Ampheck.Adb.Authentication;
 using Ampheck.Adb.Protocol;
@@ -239,14 +240,24 @@ public sealed class AdbConnection : IAsyncDisposable {
 
         _disposed = true;
         _readStop.Cancel();
+        Exception? failure = null;
         foreach (var stream in _streams.Values) {
-            await stream.AbortAsync(
-                    new ObjectDisposedException(
-                        nameof(AdbConnection)))
-                .ConfigureAwait(false);
+            try {
+                await stream.AbortAsync(
+                        new ObjectDisposedException(
+                            nameof(AdbConnection)))
+                    .ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            }
         }
 
-        await _transport.DisposeAsync().ConfigureAwait(false);
+        try {
+            await _transport.DisposeAsync().ConfigureAwait(false);
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
         if (_readLoop is not null) {
             try {
                 await _readLoop.ConfigureAwait(false);
@@ -254,8 +265,21 @@ public sealed class AdbConnection : IAsyncDisposable {
             }
         }
 
-        _readStop.Dispose();
-        _sendGate.Dispose();
+        try {
+            _readStop.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _sendGate.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     private async Task ReadLoopAsync() {

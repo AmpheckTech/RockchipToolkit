@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -64,16 +65,43 @@ public sealed class AdbServerDaemon : IAsyncDisposable {
         }
     }
 
-    public ValueTask DisposeAsync() {
+    public async ValueTask DisposeAsync() {
         if (_disposed) {
-            return ValueTask.CompletedTask;
+            return;
         }
 
         _disposed = true;
         _shutdown.Cancel();
         _listener?.Stop();
-        _shutdown.Dispose();
-        return DisposeAsyncCore();
+        Exception? failure = null;
+        try {
+            await _forwards.DisposeAsync().ConfigureAwait(false);
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            await _devices.DisposeAsync().ConfigureAwait(false);
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _shutdown.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
+    public ValueTask ReleaseUsbDevicesAsync(
+        CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _devices.ReleaseUsbDevicesAsync(
+            cancellationToken);
     }
 
     private async Task HandleClientAsync(
@@ -95,11 +123,6 @@ public sealed class AdbServerDaemon : IAsyncDisposable {
         if (!_shutdown.IsCancellationRequested) {
             _shutdown.Cancel();
         }
-    }
-
-    private async ValueTask DisposeAsyncCore() {
-        await _forwards.DisposeAsync().ConfigureAwait(false);
-        await _devices.DisposeAsync().ConfigureAwait(false);
     }
 
     private static TcpListener CreateListener(

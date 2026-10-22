@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using Ampheck.Adb.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -128,12 +129,39 @@ public sealed class ToolkitHost : IAsyncDisposable {
         }
 
         _shutdown.Cancel();
-        await _discovery.DisposeAsync().ConfigureAwait(false);
-        await _broadcast.DisposeAsync().ConfigureAwait(false);
-        await _serial.DisposeAsync().ConfigureAwait(false);
-        await _adb.DisposeAsync().ConfigureAwait(false);
-        _operationGate.Dispose();
-        _shutdown.Dispose();
+        Exception? failure = null;
+        async ValueTask CleanupAsync(
+            Func<ValueTask> dispose) {
+            try {
+                await dispose().ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            }
+        }
+
+        await CleanupAsync(_discovery.DisposeAsync)
+            .ConfigureAwait(false);
+        await CleanupAsync(_broadcast.DisposeAsync)
+            .ConfigureAwait(false);
+        await CleanupAsync(_serial.DisposeAsync)
+            .ConfigureAwait(false);
+        await CleanupAsync(_adb.DisposeAsync)
+            .ConfigureAwait(false);
+        try {
+            _operationGate.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _shutdown.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken serverToken) {
@@ -149,6 +177,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
                 _executor,
                 _serial,
                 _operationGate,
+                _adb.ReleaseUsbDevicesAsync,
                 _logger,
                 client.Client.RemoteEndPoint?.ToString(),
                 serverToken);

@@ -103,10 +103,11 @@ internal static class AdbCommands {
                 }
 
                 state.Options.AdbShellCommand =
-                    parsed.GetValue(commandOption) ??
-                    (values.Length == 0
-                        ? null
-                        : string.Join(" ", values));
+                    parsed.GetValue(commandOption);
+                state.Options.AdbShellArguments =
+                    state.Options.AdbShellCommand is null
+                        ? [.. values]
+                        : [];
             });
         return command;
     }

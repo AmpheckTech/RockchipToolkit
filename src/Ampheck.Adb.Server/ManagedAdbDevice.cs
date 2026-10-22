@@ -138,8 +138,11 @@ internal sealed class ManagedAdbDevice : IAsyncDisposable {
         }
 
         _disposed = true;
-        await ResetConnectionAsync().ConfigureAwait(false);
-        _lease.Dispose();
+        try {
+            await ResetConnectionAsync().ConfigureAwait(false);
+        } finally {
+            _lease.Dispose();
+        }
     }
 
     private async ValueTask EnsureOnlineAsync(

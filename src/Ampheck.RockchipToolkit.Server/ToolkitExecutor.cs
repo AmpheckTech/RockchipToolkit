@@ -82,10 +82,17 @@ public sealed class ToolkitExecutor(
             "Found {DeviceCount} RockUSB device(s)",
             devices.Count);
         foreach (var item in devices) {
+            var identity = RockchipUsbCatalog.Resolve(
+                item.VendorId,
+                item.ProductId);
+            var name = identity is null
+                ? string.Empty
+                : $" {identity.Family} {identity.Description}";
             await ReportAsync(
                     report,
                     $"{item.VendorId:X4}:{item.ProductId:X4} " +
-                    $"USB {item.UsbVersion:X4} {item.Mode} " +
+                    $"{item.Mode}{name} " +
+                    $"USB {item.UsbVersion:X4} " +
                     $"{item.PlatformId ?? string.Empty}")
                 .ConfigureAwait(false);
         }

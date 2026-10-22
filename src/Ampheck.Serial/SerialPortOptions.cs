@@ -2,7 +2,8 @@ namespace Ampheck.Serial;
 
 public sealed record SerialPortOptions {
     public required string PortName { get; init; }
-    public int BaudRate { get; init; } = 1500000;
+    public int BaudRate { get; init; } =
+        SerialPortDefaults.BaudRate;
     public int DataBits { get; init; } = 8;
     public SerialParity Parity { get; init; } =
         SerialParity.None;

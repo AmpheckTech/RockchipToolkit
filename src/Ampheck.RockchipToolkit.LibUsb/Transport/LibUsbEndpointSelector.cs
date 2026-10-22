@@ -1,3 +1,4 @@
+using Ampheck.RockchipToolkit.Transport;
 using LibUsbDotNet.Info;
 using LibUsbDotNet.LibUsb;
 
@@ -55,7 +56,10 @@ internal static class LibUsbEndpointSelector {
             (requestedInterfaceNumber == 0 ||
                 candidate.Number == requestedInterfaceNumber) &&
             (requestedInterfaceNumber != 0 ||
-                (byte)candidate.Class == 0xFF) &&
+                RockchipUsbInterfaceProfile.Matches(
+                    (byte)candidate.Class,
+                    (byte)candidate.SubClass,
+                    (byte)candidate.Protocol)) &&
             HasBulkEndpoints(candidate));
     }
 

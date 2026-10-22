@@ -1,6 +1,5 @@
 using Ampheck.RockchipToolkit.Device;
 using Ampheck.RockchipToolkit.Images;
-using Ampheck.RockchipToolkit.Protocol;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
@@ -9,7 +8,6 @@ internal static class DirectoryFlasher {
     public static async Task FlashAsync(
         RockchipDevice device,
         string sourceLocation,
-        bool resetAfterFlash,
         ILogger logger,
         Func<string, ValueTask> report,
         Func<long, long, ValueTask>? progress,
@@ -113,15 +111,8 @@ internal static class DirectoryFlasher {
             }
         }
 
-        if (resetAfterFlash) {
-            await report("Resetting device").ConfigureAwait(false);
-            await device.ResetAsync(ResetMode.Normal)
-                .ConfigureAwait(false);
-            await report("System flash complete; device reset")
-                .ConfigureAwait(false);
-        } else {
-            await report("System flash complete").ConfigureAwait(false);
-        }
+        await report("Firmware directory written")
+            .ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyList<RockchipPartition>>

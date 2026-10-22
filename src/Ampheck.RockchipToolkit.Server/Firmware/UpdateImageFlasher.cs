@@ -1,7 +1,6 @@
 using System.Text;
 using Ampheck.RockchipToolkit.Device;
 using Ampheck.RockchipToolkit.Images;
-using Ampheck.RockchipToolkit.Protocol;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
@@ -10,7 +9,6 @@ internal static class UpdateImageFlasher {
     public static async Task FlashAsync(
         RockchipDevice device,
         string sourceLocation,
-        bool resetAfterFlash,
         ILogger logger,
         Func<string, ValueTask> report,
         Func<long, long, ValueTask>? progress,
@@ -113,16 +111,8 @@ internal static class UpdateImageFlasher {
             completedBytes += entry.Size;
         }
 
-        if (resetAfterFlash) {
-            await report("Resetting device").ConfigureAwait(false);
-            await device.ResetAsync(ResetMode.Normal)
-                .ConfigureAwait(false);
-            await report("Update image flash complete; device reset")
-                .ConfigureAwait(false);
-        } else {
-            await report("Update image flash complete")
-                .ConfigureAwait(false);
-        }
+        await report("Update image written")
+            .ConfigureAwait(false);
     }
 
     private static string FormatBytes(long bytes) {

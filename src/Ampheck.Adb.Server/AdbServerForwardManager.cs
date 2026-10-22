@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.Adb.Server;
@@ -104,14 +105,24 @@ internal sealed class AdbServerForwardManager : IAsyncDisposable {
     public async ValueTask RemoveAllAsync() {
         ObjectDisposedException.ThrowIf(_disposed, this);
         await _gate.WaitAsync().ConfigureAwait(false);
+        Exception? failure = null;
         try {
             var forwards = _forwards.Values.ToArray();
             _forwards.Clear();
             foreach (var forward in forwards) {
-                await forward.DisposeAsync().ConfigureAwait(false);
+                try {
+                    await forward.DisposeAsync()
+                        .ConfigureAwait(false);
+                } catch (Exception error) {
+                    failure ??= error;
+                }
             }
         } finally {
             _gate.Release();
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 
@@ -122,15 +133,25 @@ internal sealed class AdbServerForwardManager : IAsyncDisposable {
 
         _disposed = true;
         await _gate.WaitAsync().ConfigureAwait(false);
+        Exception? failure = null;
         try {
-            foreach (var forward in _forwards.Values) {
-                await forward.DisposeAsync().ConfigureAwait(false);
-            }
-
+            var forwards = _forwards.Values.ToArray();
             _forwards.Clear();
+            foreach (var forward in forwards) {
+                try {
+                    await forward.DisposeAsync()
+                        .ConfigureAwait(false);
+                } catch (Exception error) {
+                    failure ??= error;
+                }
+            }
         } finally {
             _gate.Release();
             _gate.Dispose();
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 

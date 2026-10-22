@@ -24,6 +24,10 @@ public static class DeviceConnector {
                 RockchipUsbMode.Loader) {
                 await report($"loader mode: {mode}")
                     .ConfigureAwait(false);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(500),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 return 0;
             }
 
@@ -47,8 +51,16 @@ public static class DeviceConnector {
             request.VendorId,
             request.ProductId,
             loggerFactory);
-        return await provider.EnumerateAsync(cancellationToken)
+        var devices = await provider.EnumerateAsync(cancellationToken)
             .ConfigureAwait(false);
+        return devices
+            .Where(device =>
+                device.Mode != RockchipUsbMode.None &&
+                (!request.VendorId.HasValue ||
+                    device.VendorId == request.VendorId) &&
+                (!request.ProductId.HasValue ||
+                    device.ProductId == request.ProductId))
+            .ToArray();
     }
 
     internal static async Task<DeviceSession> OpenAsync(

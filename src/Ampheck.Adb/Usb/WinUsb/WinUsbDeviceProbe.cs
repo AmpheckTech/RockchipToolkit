@@ -8,9 +8,6 @@ using Microsoft.Win32.SafeHandles;
 namespace Ampheck.Adb.Usb.WinUsb;
 
 internal static class WinUsbDeviceProbe {
-    private const byte AdbSubclass = 0x42;
-    private const byte AdbProtocol = 0x01;
-    private const byte VendorSpecificInterface = 0xFF;
     private const int MaximumAssociatedInterfaces = 32;
 
     public static WinUsbAdbDevice? TryOpen(
@@ -167,9 +164,10 @@ internal static class WinUsbDeviceProbe {
 
     private static bool IsAdbInterface(
         WinUsbInterfaceDescriptor descriptor) {
-        return descriptor.InterfaceClass == VendorSpecificInterface &&
-            descriptor.InterfaceSubClass == AdbSubclass &&
-            descriptor.InterfaceProtocol == AdbProtocol;
+        return AdbUsbInterfaceProfile.Matches(
+            descriptor.InterfaceClass,
+            descriptor.InterfaceSubClass,
+            descriptor.InterfaceProtocol);
     }
 
     private static bool TryFindBulkPipes(

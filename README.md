@@ -336,6 +336,12 @@ arkt adb shell uname -a
 arkt adb shell -c 'for f in /proc/[0-9]*; do echo "$f"; done'
 ```
 
+需要保留 argv 边界时使用 `--`：
+
+```bash
+arkt adb shell -- sh -c 'echo first; echo second; echo third'
+```
+
 进入交互 Shell：
 
 ```bash

@@ -4,6 +4,7 @@ using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Server.Devices;
+using Ampheck.RockchipToolkit.Transport;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
@@ -71,9 +72,7 @@ internal static class AdbCommandRunner {
             .ConfigureAwait(false);
         EnsureUsbFilterSupported(devices, options);
         foreach (var device in FilterDevices(devices, options)) {
-            var identity = device.VendorId.HasValue
-                ? $"{device.VendorId:X4}:{device.ProductId:X4}"
-                : FormatDetails(device);
+            var identity = FormatIdentity(device);
             Console.WriteLine(
                 $"{device.SerialNumber}\t" +
                 $"{FormatState(device.State)}\t{identity}");
@@ -195,7 +194,8 @@ internal static class AdbCommandRunner {
             "Using ADB device {SerialNumber} via {Backend}",
             device.SerialNumber,
             device.Backend);
-        if (options.AdbShellCommand is null) {
+        if (options.AdbShellCommand is null &&
+            options.AdbShellArguments.Length == 0) {
             await using var shell = await device.OpenShellAsync()
                 .ConfigureAwait(false);
             await InteractiveShellRunner.RunAsync(shell, console)
@@ -203,8 +203,11 @@ internal static class AdbCommandRunner {
             return 0;
         }
 
+        var command = options.AdbShellCommand ??
+            AdbShellCommandBuilder.FromArguments(
+                options.AdbShellArguments);
         var output = await device.ExecuteShellAsync(
-                options.AdbShellCommand)
+                command)
             .ConfigureAwait(false);
         Console.Out.Write(output);
         if (output.Length > 0 &&
@@ -250,9 +253,12 @@ internal static class AdbCommandRunner {
         console.WriteStatus("Requesting Loader mode");
         await device.RebootAsync(AdbRebootMode.Bootloader)
             .ConfigureAwait(false);
+        console.WriteStatus("Waiting for Rockchip Loader");
         if (toolkitEndpoint is not null) {
             return await WaitForRemoteLoaderAsync(
                     toolkitEndpoint,
+                    options.VendorId,
+                    options.ProductId,
                     options,
                     console)
                 .ConfigureAwait(false);
@@ -279,6 +285,8 @@ internal static class AdbCommandRunner {
 
     private static async Task<int> WaitForRemoteLoaderAsync(
         ToolkitEndpoint endpoint,
+        ushort? vendorId,
+        ushort? productId,
         CommandOptions options,
         ConsoleRenderer console) {
         var token = Environment.GetEnvironmentVariable(
@@ -297,8 +305,8 @@ internal static class AdbCommandRunner {
                         ToolkitTransport.LibUsb,
                     _ => ToolkitTransport.Auto
                 },
-                VendorId = options.VendorId,
-                ProductId = options.ProductId
+                VendorId = vendorId,
+                ProductId = productId
             };
             await client.ExecuteAsync(
                     request,
@@ -317,6 +325,9 @@ internal static class AdbCommandRunner {
                 console.WriteStatus(
                     "Device entered Loader mode",
                     complete: true);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(500))
+                    .ConfigureAwait(false);
                 return 0;
             }
 
@@ -384,6 +395,23 @@ internal static class AdbCommandRunner {
         }.Where(value => value is not null);
         var text = string.Join(" ", details);
         return text.Length == 0 ? "adb server" : text;
+    }
+
+    private static string FormatIdentity(AdbDevice device) {
+        if (!device.VendorId.HasValue ||
+            !device.ProductId.HasValue) {
+            return FormatDetails(device);
+        }
+
+        var vendorId = device.VendorId.Value;
+        var productId = device.ProductId.Value;
+        var known = RockchipUsbCatalog.Resolve(
+            vendorId,
+            productId);
+        return known is null
+            ? $"{vendorId:X4}:{productId:X4}"
+            : $"{vendorId:X4}:{productId:X4} " +
+              $"{known.Family} {known.Description}";
     }
 
     private static string? FormatField(

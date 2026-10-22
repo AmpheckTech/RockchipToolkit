@@ -32,6 +32,14 @@ internal static class CommandLine {
                     "A command is required. Use --help to list commands.");
             }
 
+            var separator = Array.IndexOf(args, "--");
+            if (state.Command == CommandNames.AdbShell &&
+                state.Options.AdbShellCommand is null &&
+                separator >= 0) {
+                state.Options.AdbShellArguments =
+                    args[(separator + 1)..];
+            }
+
             return new ParsedCommand(
                 state.Command,
                 state.Options);

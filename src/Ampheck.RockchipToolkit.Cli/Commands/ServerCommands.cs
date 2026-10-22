@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
@@ -15,7 +16,8 @@ internal static class ServerCommands {
         var listen = new Option<string>(
             "--listen") {
             Description = "Listen address as host:port.",
-            DefaultValueFactory = _ => "127.0.0.1:5070"
+            DefaultValueFactory = _ =>
+                ToolkitServerDefaults.Endpoint
         };
         var token = new Option<string?>(
             "--token") {

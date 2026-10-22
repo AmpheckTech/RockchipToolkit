@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using Ampheck.Adb.Device;
 using Ampheck.Adb.Usb;
 using Microsoft.Extensions.Logging;
@@ -94,6 +95,39 @@ internal sealed class AdbServerDeviceRegistry : IAsyncDisposable {
             .ToArray();
     }
 
+    public async ValueTask ReleaseUsbDevicesAsync(
+        CancellationToken cancellationToken) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _refreshGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        Exception? failure = null;
+        try {
+            foreach (var serialNumber in _devices
+                .Where(pair => pair.Value.IsUsb)
+                .Select(pair => pair.Key)
+                .ToArray()) {
+                if (!_devices.TryRemove(
+                        serialNumber,
+                        out var device)) {
+                    continue;
+                }
+
+                try {
+                    await device.DisposeAsync()
+                        .ConfigureAwait(false);
+                } catch (Exception error) {
+                    failure ??= error;
+                }
+            }
+        } finally {
+            _refreshGate.Release();
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
     public async ValueTask<string> ConnectNetworkAsync(
         string host,
         int port,
@@ -158,20 +192,30 @@ internal sealed class AdbServerDeviceRegistry : IAsyncDisposable {
     public async ValueTask<string> DisconnectAllNetworkAsync() {
         ObjectDisposedException.ThrowIf(_disposed, this);
         await _refreshGate.WaitAsync().ConfigureAwait(false);
+        Exception? failure = null;
         try {
             var networkDevices = _devices
                 .Where(pair => !pair.Value.IsUsb)
                 .ToArray();
             foreach (var pair in networkDevices) {
                 if (_devices.TryRemove(pair.Key, out var device)) {
-                    await device.DisposeAsync().ConfigureAwait(false);
+                    try {
+                        await device.DisposeAsync()
+                            .ConfigureAwait(false);
+                    } catch (Exception error) {
+                        failure ??= error;
+                    }
                 }
             }
-
-            return "disconnected all network devices";
         } finally {
             _refreshGate.Release();
         }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
+        return "disconnected all network devices";
     }
 
     public async ValueTask<ManagedAdbDevice> RequireAsync(
@@ -229,13 +273,32 @@ internal sealed class AdbServerDeviceRegistry : IAsyncDisposable {
         }
 
         _disposed = true;
-        foreach (var device in _devices.Values) {
-            await device.DisposeAsync().ConfigureAwait(false);
+        var devices = _devices.Values.ToArray();
+        _devices.Clear();
+        Exception? failure = null;
+        foreach (var device in devices) {
+            try {
+                await device.DisposeAsync().ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            }
         }
 
-        _devices.Clear();
-        await _provider.DisposeAsync().ConfigureAwait(false);
-        _refreshGate.Dispose();
+        try {
+            await _provider.DisposeAsync().ConfigureAwait(false);
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _refreshGate.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     private async ValueTask RemoveAsync(string serialNumber) {

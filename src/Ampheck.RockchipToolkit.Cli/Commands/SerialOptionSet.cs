@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Ampheck.RockchipToolkit.Rpc;
+using Ampheck.Serial;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
@@ -9,7 +10,8 @@ internal sealed class SerialOptionSet {
         "--baud",
         "-b") {
         Description = "Baud rate.",
-        DefaultValueFactory = _ => 1500000
+        DefaultValueFactory = _ =>
+            SerialPortDefaults.BaudRate
     };
     public Option<string?> DataBits { get; } = new("--data-bits") {
         Description = "Data bits: 5, 6, 7, or 8.",

@@ -3,16 +3,14 @@ using LibUsbDotNet.LibUsb;
 namespace Ampheck.Adb.Usb;
 
 internal static class AdbInterfaceSelector {
-    private const byte AdbSubclass = 0x42;
-    private const byte AdbProtocol = 0x01;
-
     public static AdbInterfaceSelection? TrySelect(
         IUsbDevice device) {
         foreach (var configuration in device.Configs) {
             foreach (var setting in configuration.Interfaces) {
-                if ((byte)setting.Class != 0xFF ||
-                    (byte)setting.SubClass != AdbSubclass ||
-                    (byte)setting.Protocol != AdbProtocol) {
+                if (!AdbUsbInterfaceProfile.Matches(
+                        (byte)setting.Class,
+                        (byte)setting.SubClass,
+                        (byte)setting.Protocol)) {
                     continue;
                 }
 

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
@@ -146,9 +147,12 @@ internal sealed class SerialHub : IAsyncDisposable {
         }
 
         await _stop.CancelAsync().ConfigureAwait(false);
+        Exception? failure = null;
         try {
             await _pump.ConfigureAwait(false);
         } catch (OperationCanceledException) {
+        } catch (Exception error) {
+            failure = error;
         }
 
         lock (_sync) {
@@ -162,9 +166,27 @@ internal sealed class SerialHub : IAsyncDisposable {
             _sessions.Clear();
         }
 
-        _port?.Dispose();
-        _writeGate.Dispose();
-        _stop.Dispose();
+        try {
+            _port?.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _writeGate.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        try {
+            _stop.Dispose();
+        } catch (Exception error) {
+            failure ??= error;
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     private async Task RunAsync() {

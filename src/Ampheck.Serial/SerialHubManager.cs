@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.Serial;
@@ -133,8 +134,17 @@ public sealed class SerialHubManager : IAsyncDisposable {
             _hubs.Clear();
         }
 
+        Exception? failure = null;
         foreach (var hub in hubs) {
-            await hub.DisposeAsync().ConfigureAwait(false);
+            try {
+                await hub.DisposeAsync().ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            }
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 

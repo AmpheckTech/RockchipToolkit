@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Ampheck.RockchipToolkit.Server.Firmware;
 using Microsoft.Extensions.Logging;
@@ -167,10 +168,23 @@ internal sealed class ToolkitChannel : IAsyncDisposable {
             return;
         }
 
-        _operationStop?.Dispose();
+        Exception? failure = null;
+        try {
+            _operationStop?.Dispose();
+        } catch (Exception error) {
+            failure = error;
+        }
+
         _input.Writer.TryComplete();
         if (_attachmentStream is not null) {
-            await _attachmentStream.DisposeAsync().ConfigureAwait(false);
+            try {
+                await _attachmentStream.DisposeAsync()
+                    .ConfigureAwait(false);
+            } catch (Exception error) {
+                failure ??= error;
+            } finally {
+                _attachmentStream = null;
+            }
         }
 
         try {
@@ -178,6 +192,10 @@ internal sealed class ToolkitChannel : IAsyncDisposable {
                 Directory.Delete(_root, recursive: true);
             }
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 }

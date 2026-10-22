@@ -6,7 +6,8 @@ using Ampheck.RockchipToolkit.Rpc;
 namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 
 internal static class ToolkitEndpointResolver {
-    private const string LocalEndpoint = "127.0.0.1:5070";
+    private const string LocalEndpoint =
+        ToolkitServerDefaults.Endpoint;
 
     public static async Task<ToolkitEndpoint?> ResolveAsync(
         CommandOptions options,

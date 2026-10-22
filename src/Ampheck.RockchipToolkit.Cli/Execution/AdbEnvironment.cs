@@ -34,7 +34,7 @@ internal sealed record AdbEnvironment(
 
     private static int ParsePort(string? value) {
         if (string.IsNullOrWhiteSpace(value)) {
-            return 5037;
+            return AdbDefaults.ServerPort;
         }
 
         return int.TryParse(value, out var port) &&

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using LibUsbDotNet;
 using LibUsbDotNet.LibUsb;
 using LibUsbDotNet.Main;
@@ -109,10 +110,54 @@ internal sealed class AdbUsbTransport : IAdbTransport {
             return ValueTask.CompletedTask;
         }
 
-        _device.ReleaseInterface(_selection.InterfaceNumber);
-        _device.Close();
         _disposed = true;
+        Exception? failure = null;
+        try {
+            _device.ReleaseInterface(_selection.InterfaceNumber);
+        } catch (Exception error) when (
+            !IsDisconnect(error)) {
+            failure = error;
+        } catch (Exception error) when (
+            IsDisconnect(error)) {
+        }
+
+        try {
+            _device.Close();
+        } catch (Exception error) when (
+            !IsDisconnect(error) &&
+            failure is null) {
+            failure = error;
+        } catch (Exception error) when (
+            IsDisconnect(error)) {
+        }
+
+        if (failure is not null) {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
         return ValueTask.CompletedTask;
     }
 
+    private static bool IsDisconnect(Exception error) {
+        for (var current = error;
+            current is not null;
+            current = current.InnerException) {
+            if (current is UsbException {
+                ErrorCode: Error.NoDevice or Error.NotFound
+            } ||
+                current.Message.Contains(
+                    "LIBUSB_ERROR_NO_DEVICE",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "No such device",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "Entity not found",
+                    StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

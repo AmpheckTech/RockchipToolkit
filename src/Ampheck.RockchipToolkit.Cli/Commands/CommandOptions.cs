@@ -14,6 +14,7 @@ internal sealed class CommandOptions {
     public string? Backup { get; set; }
     public string? AdbSerial { get; set; }
     public string? AdbShellCommand { get; set; }
+    public string[] AdbShellArguments { get; set; } = [];
     public string? AdbSource { get; set; }
     public string? AdbDestination { get; set; }
     public string? CompletionShell { get; set; }

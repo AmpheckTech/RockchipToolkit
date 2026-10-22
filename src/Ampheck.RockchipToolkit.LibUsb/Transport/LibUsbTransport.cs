@@ -146,10 +146,20 @@ internal sealed class LibUsbTransport : IUsbTransport {
         }
 
         if (_claimed) {
-            _device.ReleaseInterface(_selection.InterfaceNumber);
+            try {
+                _device.ReleaseInterface(
+                    _selection.InterfaceNumber);
+            } catch (Exception error) when (
+                IsDisconnect(error)) {
+            }
         }
 
-        _device.Close();
+        try {
+            _device.Close();
+        } catch (Exception error) when (
+            IsDisconnect(error)) {
+        }
+
         _disposed = true;
         return ValueTask.CompletedTask;
     }
@@ -182,5 +192,14 @@ internal sealed class LibUsbTransport : IUsbTransport {
 
     private void EnsureOpen() {
         ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    private static bool IsDisconnect(Exception error) {
+        return error.Message.Contains(
+                "No such device",
+                StringComparison.OrdinalIgnoreCase) ||
+            error.Message.Contains(
+                "Entity not found",
+                StringComparison.OrdinalIgnoreCase);
     }
 }

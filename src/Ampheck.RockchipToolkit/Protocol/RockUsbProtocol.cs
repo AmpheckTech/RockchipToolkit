@@ -140,15 +140,50 @@ public sealed class RockUsbProtocol : IDisposable {
             throw new ArgumentOutOfRangeException(nameof(mode));
         }
 
-        await ExecuteAsync(
-            RockUsbOperation.DeviceReset,
-            0,
-            0,
-            ReadWriteMode.Image,
-            ReadOnlyMemory<byte>.Empty,
-            false,
-            cancellationToken,
-            subCode: (byte)mode).ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _commandGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try {
+            var tag = unchecked(++_tag);
+            var cbw = BuildCommandBlock(
+                RockUsbOperation.DeviceReset,
+                0,
+                0,
+                ReadWriteMode.Image,
+                0,
+                ReadOnlyMemory<byte>.Empty,
+                false,
+                0,
+                (byte)mode,
+                tag);
+            try {
+                await _transport.WriteBulkAsync(
+                        cbw,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(250),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            } catch (Exception error) when (
+                IsDisconnect(error)) {
+                _logger.LogDebug(
+                    error,
+                    "Device disconnected while requesting reset");
+            }
+        } finally {
+            _commandGate.Release();
+        }
+
+        try {
+            await _transport.ResetAsync(cancellationToken)
+                .ConfigureAwait(false);
+        } catch (Exception error) when (
+            IsDisconnect(error)) {
+            _logger.LogDebug(
+                error,
+                "USB device disconnected during reset");
+        }
     }
 
     public ValueTask TestReadyAsync(
@@ -588,6 +623,35 @@ public sealed class RockUsbProtocol : IDisposable {
                 $"RockUSB {operation} failed: {error.Message}",
                 operation,
                 error);
+    }
+
+    private static bool IsDisconnect(Exception error) {
+        for (var current = error;
+            current is not null;
+            current = current.InnerException) {
+            if (current is System.ComponentModel.Win32Exception {
+                NativeErrorCode: 22 or 31 or 1167
+            } ||
+                current.Message.Contains(
+                    "No such device",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "Entity not found",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "device not connected",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "LIBUSB_ERROR_NO_DEVICE",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "Timeout",
+                    StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void Dispose() {

@@ -151,6 +151,8 @@ internal static class ToolkitDeviceOperations {
                         ToResetMode(request.ResetMode),
                         cancellationToken)
                     .ConfigureAwait(false);
+                await device.DisposeAsync()
+                    .ConfigureAwait(false);
                 await ReportSuccessAsync(report, "Reset requested")
                     .ConfigureAwait(false);
                 break;
@@ -233,7 +235,6 @@ internal static class ToolkitDeviceOperations {
             await UpdateImageFlasher.FlashAsync(
                     device,
                     flashInput.Location,
-                    request.ResetAfterFlash,
                     logger,
                     Report,
                     progress,
@@ -244,12 +245,22 @@ internal static class ToolkitDeviceOperations {
             await DirectoryFlasher.FlashAsync(
                     device,
                     flashInput.Location,
-                    request.ResetAfterFlash,
                     logger,
                     Report,
                     progress,
                     limits,
                     cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (request.ResetAfterFlash) {
+            await Report("Resetting device")
+                .ConfigureAwait(false);
+            await device.ResetAsync(ResetMode.Normal)
+                .ConfigureAwait(false);
+            await device.DisposeAsync()
+                .ConfigureAwait(false);
+            await Report("Device reset")
                 .ConfigureAwait(false);
         }
 

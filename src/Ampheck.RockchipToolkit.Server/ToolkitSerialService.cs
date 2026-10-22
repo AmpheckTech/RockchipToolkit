@@ -77,7 +77,8 @@ public sealed class ToolkitSerialService(
 
         return new SerialPortOptions {
             PortName = request.SerialPort,
-            BaudRate = request.BaudRate ?? 1500000,
+            BaudRate = request.BaudRate ??
+                SerialPortDefaults.BaudRate,
             DataBits = request.SerialDataBits ?? 8,
             Parity = request.SerialParity switch {
                 ToolkitSerialParity.Odd =>

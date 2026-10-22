@@ -134,7 +134,8 @@ internal static class SerialCommandRunner {
             case CommandNames.SerialClose:
                 throw new InvalidOperationException(
                     "serial open and serial close require a running " +
-                    "server; set ARKT_SERVER or start localhost:5070.");
+                    "server; set ARKT_SERVER or start " +
+                    $"{ToolkitServerDefaults.Endpoint}.");
             case CommandNames.SerialTerminal: {
                     await using var session =
                         await serial.AttachAsync(request)

@@ -171,7 +171,7 @@ internal static class RockUsbDeviceEnumerator {
             vendorId,
             productId,
             0,
-            DetectMode(path, vendorId),
+            DetectMode(path, vendorId, productId),
             PlatformId: path));
     }
 
@@ -228,8 +228,11 @@ internal static class RockUsbDeviceEnumerator {
 
     private static RockchipUsbMode DetectMode(
         string path,
-        ushort vendorId) {
-        if (vendorId is not (0x2207 or 0x071B or 0x0BB4)) {
+        ushort vendorId,
+        ushort productId) {
+        if (!RockchipUsbCatalog.IsRockUsbDevice(
+                vendorId,
+                productId)) {
             return RockchipUsbMode.None;
         }
 
