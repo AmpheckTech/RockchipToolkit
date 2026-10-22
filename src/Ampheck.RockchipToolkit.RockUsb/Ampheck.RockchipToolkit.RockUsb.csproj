@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Ampheck.RockchipToolkit.RockUsb</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.RockUsb</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+</Project>

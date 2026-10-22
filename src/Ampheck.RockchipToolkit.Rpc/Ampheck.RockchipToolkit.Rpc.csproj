@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Ampheck.RockchipToolkit.Rpc</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.Rpc</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

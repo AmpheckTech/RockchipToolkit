@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <IsPackable>false</IsPackable>
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+  </PropertyGroup>
+</Project>

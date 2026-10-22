@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>arkt</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.Cli</RootNamespace>
+    <Company>Ampheck</Company>
+    <Product>Ampheck Rockchip Toolkit</Product>
+    <Description>Rockchip flashing and ADB command-line toolkit.</Description>
+    <Copyright>Copyright (c) 2026 Ampheck</Copyright>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(PublishAot)' == 'true'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.Adb/Ampheck.Adb.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.Rpc/Ampheck.RockchipToolkit.Rpc.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.Server/Ampheck.RockchipToolkit.Server.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
+    <PackageReference Include="System.CommandLine" Version="2.0.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Presentation/MOTD.txt">
+      <LogicalName>Ampheck.RockchipToolkit.Cli.MOTD.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <Target Name="RemovePublishExtras"
+          AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Extension)' == '.pdb' or '%(Extension)' == '.dbg'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveNativeAotDebugFile"
+          AfterTargets="_CopyAotSymbols"
+          Condition="'$(PublishAot)' == 'true'">
+    <Delete Files="$(PublishDir)$(TargetName).dbg;$(PublishDir)$(TargetName).pdb" />
+  </Target>
+</Project>

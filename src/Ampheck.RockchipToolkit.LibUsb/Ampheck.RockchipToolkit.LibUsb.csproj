@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Ampheck.RockchipToolkit.LibUsb</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.LibUsb</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+    <PackageReference Include="LibUsbDotNet" Version="3.0.224" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+</Project>

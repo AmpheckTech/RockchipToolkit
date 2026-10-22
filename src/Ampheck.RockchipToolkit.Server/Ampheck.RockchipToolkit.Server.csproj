@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Ampheck.RockchipToolkit.Server</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.Server</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.Adb.Server/Ampheck.Adb.Server.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.LibUsb/Ampheck.RockchipToolkit.LibUsb.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.RockUsb/Ampheck.RockchipToolkit.RockUsb.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.Rpc/Ampheck.RockchipToolkit.Rpc.csproj" />
+    <ProjectReference Include="../Ampheck.Serial/Ampheck.Serial.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+</Project>

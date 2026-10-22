@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Ampheck.RockchipToolkit.slnx
+
+      - name: Check formatting
+        if: matrix.rid == 'linux-x64'
+        run: dotnet format Ampheck.RockchipToolkit.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build Ampheck.RockchipToolkit.slnx -c Release --no-restore
+
+      - name: Check vulnerable dependencies
+        if: matrix.rid == 'linux-x64'
+        run: dotnet list Ampheck.RockchipToolkit.slnx package --vulnerable --include-transitive
+
+  native-aot:
+    name: NativeAOT smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install NativeAOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish arkt
+        run: >
+          dotnet publish
+          src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj
+          -c Release
+          -r linux-x64
+          --self-contained true
+          -p:PublishAot=true
+          -o dist/arkt/linux-x64
+
+      - name: Publish adbcli
+        run: >
+          dotnet publish
+          src/Ampheck.Adb.Cli/Ampheck.Adb.Cli.csproj
+          -c Release
+          -r linux-x64
+          --self-contained true
+          -p:PublishAot=true
+          -o dist/adbcli/linux-x64
+
+      - name: Run native binaries
+        run: |
+          ./dist/arkt/linux-x64/arkt --help >/dev/null
+          ./dist/adbcli/linux-x64/adbcli --help >/dev/null
+
+      - name: Run completion smoke test
+        run: ./dist/arkt/linux-x64/arkt completion bash >/dev/null
+
+      - name: Run single-file serial smoke test
+        run: |
+          smoke_dir=$(mktemp -d)
+          cp dist/arkt/linux-x64/arkt "$smoke_dir/arkt"
+          (
+            cd "$smoke_dir"
+            ./arkt serial list >/dev/null
+          )
+
+      - name: Upload smoke-test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-aot-smoke
+          path: |
+            dist/arkt/linux-x64/arkt
+            dist/adbcli/linux-x64/adbcli
+          retention-days: 7

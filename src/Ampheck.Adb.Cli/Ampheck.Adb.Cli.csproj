@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>adbcli</AssemblyName>
+    <RootNamespace>Ampheck.Adb.Cli</RootNamespace>
+    <Company>Ampheck</Company>
+    <Product>Ampheck ADB CLI</Product>
+    <Description>An ADB-compatible command-line client and server.</Description>
+    <Copyright>Copyright (c) 2026 Ampheck</Copyright>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.Adb/Ampheck.Adb.csproj" />
+    <ProjectReference Include="../Ampheck.Adb.Server/Ampheck.Adb.Server.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="System.CommandLine" Version="2.0.13" />
+  </ItemGroup>
+</Project>

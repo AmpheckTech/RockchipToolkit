@@ -1,0 +1,31 @@
+namespace Ampheck.RockchipToolkit.Protocol;
+
+public enum RockUsbOperation : byte {
+    TestUnitReady = 0x00,
+    ReadFlashId = 0x01,
+    TestBadBlock = 0x03,
+    ReadSector = 0x04,
+    WriteSector = 0x05,
+    EraseNormal = 0x06,
+    EraseForce = 0x0B,
+    ReadLba = 0x14,
+    WriteLba = 0x15,
+    EraseSystemDisk = 0x16,
+    ReadSdram = 0x17,
+    WriteSdram = 0x18,
+    ExecuteSdram = 0x19,
+    ReadFlashInfo = 0x1A,
+    ReadChipInfo = 0x1B,
+    SetResetFlag = 0x1E,
+    WriteEfuse = 0x1F,
+    ReadEfuse = 0x20,
+    ReadSpiFlash = 0x21,
+    WriteSpiFlash = 0x22,
+    WriteNewEfuse = 0x23,
+    ReadNewEfuse = 0x24,
+    EraseLba = 0x25,
+    ChangeStorage = 0x2A,
+    ReadStorage = 0x2B,
+    ReadCapability = 0xAA,
+    DeviceReset = 0xFF
+}

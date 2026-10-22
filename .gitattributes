@@ -1,0 +1,31 @@
+* text=auto eol=lf
+
+*.cs text diff=csharp
+*.csproj text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.slnx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.zip binary
+*.gz binary
+*.tar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.pdb binary
+*.dbg binary
+
+.githooks/* text eol=lf

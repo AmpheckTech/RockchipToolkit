@@ -1,0 +1,214 @@
+name: Release AOT
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            printf 'Invalid release version: %s\n' "$VERSION" >&2
+            exit 1
+          fi
+
+          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Install Linux NativeAOT prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Restore
+        run: dotnet restore Ampheck.RockchipToolkit.slnx -r ${{ matrix.rid }}
+
+      - name: Publish arkt
+        shell: bash
+        run: >
+          dotnet publish
+          src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          --no-restore
+          -p:PublishAot=true
+          -p:Version="$VERSION"
+          -o dist/arkt/${{ matrix.rid }}
+
+      - name: Publish adbcli
+        shell: bash
+        run: >
+          dotnet publish
+          src/Ampheck.Adb.Cli/Ampheck.Adb.Cli.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          --no-restore
+          -p:PublishAot=true
+          -p:Version="$VERSION"
+          -o dist/adbcli/${{ matrix.rid }}
+
+      - name: Prepare Linux binaries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p release
+          install -m 755 \
+            "dist/arkt/${{ matrix.rid }}/arkt" \
+            "release/arkt-v${VERSION}-${{ matrix.rid }}"
+          install -m 755 \
+            "dist/adbcli/${{ matrix.rid }}/adbcli" \
+            "release/adbcli-v${VERSION}-${{ matrix.rid }}"
+
+      - name: Prepare Windows binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Copy-Item `
+            "dist/arkt/${{ matrix.rid }}/arkt.exe" `
+            "release/arkt-v$env:VERSION-${{ matrix.rid }}.exe"
+          Copy-Item `
+            "dist/adbcli/${{ matrix.rid }}/adbcli.exe" `
+            "release/adbcli-v$env:VERSION-${{ matrix.rid }}.exe"
+
+      - name: Upload release binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: tools-${{ matrix.rid }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Create GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tools-*
+          merge-multiple: true
+          path: release
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS
+
+      - name: Publish release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}"
+          status=$(
+            curl -sS \
+              -o /tmp/arkt-release.json \
+              -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api_url"
+          )
+
+          if [[ "$status" == "404" ]]; then
+            prerelease=false
+            if [[ "$TAG_NAME" == *-* ]]; then
+              prerelease=true
+            fi
+
+            jq -n \
+              --arg tag "$TAG_NAME" \
+              --arg body "$(git tag -l --format='%(contents)' "$TAG_NAME")" \
+              --argjson prerelease "$prerelease" \
+              '{
+                tag_name: $tag,
+                name: $tag,
+                body: $body,
+                draft: false,
+                prerelease: $prerelease
+              }' >/tmp/arkt-release-request.json
+
+            curl --fail-with-body -sS \
+              -X POST \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/arkt-release-request.json \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases" \
+              >/tmp/arkt-release-created.json
+          elif [[ "$status" != "200" ]]; then
+            cat /tmp/arkt-release.json >&2
+            exit 1
+          fi
+
+          gh release upload "$TAG_NAME" * --clobber

@@ -1,0 +1,50 @@
+# .NET build output
+**/bin/
+**/obj/
+**/TestResults/
+**/BenchmarkDotNet.Artifacts/
+
+# IDE and user state
+.vs/
+.vscode/
+.fleet/
+.idea/
+.history/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.log
+*.pid
+*.tmp
+*.bak
+*.orig
+*.rej
+*.swp
+*~
+
+# NuGet package output
+**/*.nupkg
+**/*.snupkg
+artifacts/
+packages/
+
+# NativeAOT and publish output
+publish/
+dist/
+release/
+
+# Tool and coverage output
+.coverage
+coverage/
+*.profraw
+*.dbg
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
