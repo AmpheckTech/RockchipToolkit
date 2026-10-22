@@ -87,6 +87,17 @@ public static class DeviceConnector {
                 await provider.OpenAsync(selected, cancellationToken)
                     .ConfigureAwait(false),
                 provider);
+        } catch (Exception error) when (
+            IsPermissionFailure(error)) {
+            await provider.DisposeAsync().ConfigureAwait(false);
+            var hint = OperatingSystem.IsWindows()
+                ? "Install the Rockchip USB driver and reconnect " +
+                  "the device."
+                : "Configure a udev rule, join the dialout group, " +
+                  "or run the command with sudo.";
+            throw new InvalidOperationException(
+                $"{error.Message} {hint}",
+                error);
         } catch {
             await provider.DisposeAsync().ConfigureAwait(false);
             throw;
@@ -144,5 +155,29 @@ public static class DeviceConnector {
         }
 
         return matching.SingleOrDefault();
+    }
+
+    private static bool IsPermissionFailure(Exception error) {
+        for (var current = error;
+            current is not null;
+            current = current.InnerException) {
+            if (current is UnauthorizedAccessException ||
+                current is System.ComponentModel.Win32Exception {
+                    NativeErrorCode: 5 or 13
+                } ||
+                current.Message.Contains(
+                    "insufficient permissions",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "permission denied",
+                    StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(
+                    "LIBUSB_ERROR_ACCESS",
+                    StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

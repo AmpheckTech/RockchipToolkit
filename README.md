@@ -330,6 +330,12 @@ arkt adb devices
 arkt adb shell uname -a
 ```
 
+管道、循环等多段命令使用 `-c`：
+
+```bash
+arkt adb shell -c 'for f in /proc/[0-9]*; do echo "$f"; done'
+```
+
 进入交互 Shell：
 
 ```bash
@@ -343,10 +349,12 @@ arkt adb push ./local.bin /tmp/local.bin
 arkt adb pull /tmp/local.bin ./local.bin
 ```
 
-重启到 RockUSB Loader：
+重启设备：
 
 ```bash
 arkt adb reboot loader
+arkt adb reboot normal
+arkt adb reboot recovery
 ```
 
 设置 `ARKT_SERVER` 后，ADB 请求由 Server 转发。ADB 端口默认是 `5037`，

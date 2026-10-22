@@ -267,9 +267,18 @@ internal sealed class ToolkitAttachmentPlan : IAsyncDisposable {
                     role,
                     kind,
                     Path.GetFileName(path),
-                    new FileInfo(path).Length)
+                    GetFileLength(path))
             ]
         };
+    }
+
+    private static long GetFileLength(string path) {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+        return stream.Length;
     }
 
     private static bool IsHttpLocation(string location) {

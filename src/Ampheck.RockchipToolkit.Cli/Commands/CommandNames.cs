@@ -22,6 +22,8 @@ internal static class CommandNames {
     public const string AdbShell = Adb + " shell";
     public const string AdbPush = Adb + " push";
     public const string AdbPull = Adb + " pull";
+    public const string AdbRebootSystem = Adb + " reboot system";
+    public const string AdbRebootRecovery = Adb + " reboot recovery";
     public const string AdbRebootLoader = Adb + " reboot loader";
     public const string Completion = "completion";
     public const string Serial = "serial";

@@ -22,7 +22,26 @@ internal static class AdbCommands {
 
         var reboot = new Command(
             "reboot",
-            "Reboot an ADB device.");
+            "Reboot an ADB device. Defaults to normal mode.");
+        CommandOptionsBinder.AddAdbOptions(
+            reboot,
+            state,
+            CommandNames.AdbRebootSystem);
+        var rebootNormal = new Command(
+            "normal",
+            "Reboot into the system.");
+        rebootNormal.Aliases.Add("system");
+        CommandOptionsBinder.AddAdbOptions(
+            rebootNormal,
+            state,
+            CommandNames.AdbRebootSystem);
+        var rebootRecovery = new Command(
+            "recovery",
+            "Reboot into recovery mode.");
+        CommandOptionsBinder.AddAdbOptions(
+            rebootRecovery,
+            state,
+            CommandNames.AdbRebootRecovery);
         var rebootLoader = new Command(
             "loader",
             "Reboot into RockUSB Loader mode.");
@@ -30,6 +49,8 @@ internal static class AdbCommands {
             rebootLoader,
             state,
             CommandNames.AdbRebootLoader);
+        reboot.Add(rebootNormal);
+        reboot.Add(rebootRecovery);
         reboot.Add(rebootLoader);
         command.Add(reboot);
         return command;
@@ -61,7 +82,8 @@ internal static class AdbCommands {
         var commandOption = new Option<string?>(
             "--command",
             "-c") {
-            Description = "Command to run instead of an interactive shell."
+            Description = "Run a shell command instead of an " +
+                "interactive shell. Use -c for pipelines and loops."
         };
         command.Add(commandArgument);
         command.Add(commandOption);

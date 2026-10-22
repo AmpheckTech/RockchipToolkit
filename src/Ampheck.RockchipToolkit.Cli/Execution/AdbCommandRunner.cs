@@ -1,5 +1,6 @@
 using Ampheck.Adb;
 using Ampheck.RockchipToolkit.Cli.Commands;
+using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Server.Devices;
@@ -8,44 +9,59 @@ using Microsoft.Extensions.Logging;
 namespace Ampheck.RockchipToolkit.Cli.Execution;
 
 internal static class AdbCommandRunner {
-    public static Task<int> ExecuteAsync(
+    public static async Task<int> ExecuteAsync(
         string command,
         CommandOptions options,
         ILoggerFactory loggerFactory,
         ILogger logger,
         ConsoleRenderer console) {
-        var environment = AdbEnvironment.Resolve();
-        var client = new AdbClient(
-            environment.Client,
-            loggerFactory: loggerFactory);
-        return command switch {
-            CommandNames.AdbDevices => ListDevicesAsync(
-                client,
-                options),
-            CommandNames.AdbShell => RunShellAsync(
-                client,
-                options,
-                logger,
-                console),
-            CommandNames.AdbPush => PushAsync(
-                client,
-                options,
-                logger,
-                console),
-            CommandNames.AdbPull => PullAsync(
-                client,
-                options,
-                logger,
-                console),
-            CommandNames.AdbRebootLoader => EnterLoaderAsync(
-                client,
-                options,
-                loggerFactory,
-                console,
-                environment.Toolkit),
-            _ => throw new ArgumentException(
-                $"Unknown ADB command '{command}'.")
-        };
+        try {
+            var environment = AdbEnvironment.Resolve();
+            var client = new AdbClient(
+                environment.Client,
+                loggerFactory: loggerFactory);
+            return await (command switch {
+                CommandNames.AdbDevices => ListDevicesAsync(
+                    client,
+                    options),
+                CommandNames.AdbShell => RunShellAsync(
+                    client,
+                    options,
+                    logger,
+                    console),
+                CommandNames.AdbPush => PushAsync(
+                    client,
+                    options,
+                    logger,
+                    console),
+                CommandNames.AdbPull => PullAsync(
+                    client,
+                    options,
+                    logger,
+                    console),
+                CommandNames.AdbRebootSystem => RebootAsync(
+                    client,
+                    options,
+                    AdbRebootMode.System,
+                    console),
+                CommandNames.AdbRebootRecovery => RebootAsync(
+                    client,
+                    options,
+                    AdbRebootMode.Recovery,
+                    console),
+                CommandNames.AdbRebootLoader => EnterLoaderAsync(
+                    client,
+                    options,
+                    loggerFactory,
+                    console,
+                    environment.Toolkit),
+                _ => throw new ArgumentException(
+                    $"Unknown ADB command '{command}'.")
+            }).ConfigureAwait(false);
+        } catch (Exception error) when (
+            UsbAccessError.IsPermissionFailure(error)) {
+            throw UsbAccessError.Wrap(error);
+        }
     }
 
     private static async Task<int> ListDevicesAsync(
@@ -197,6 +213,27 @@ internal static class AdbCommandRunner {
         }
 
         Console.Out.Flush();
+        return 0;
+    }
+
+    private static async Task<int> RebootAsync(
+        AdbClient client,
+        CommandOptions options,
+        AdbRebootMode mode,
+        ConsoleRenderer console) {
+        var device = await SelectDeviceAsync(
+                client,
+                options)
+            .ConfigureAwait(false);
+        var name = mode == AdbRebootMode.Recovery
+            ? "recovery"
+            : "normal";
+        console.WriteStatus($"Requesting {name} reboot");
+        await device.RebootAsync(mode)
+            .ConfigureAwait(false);
+        console.WriteStatus(
+            $"{name} reboot requested",
+            complete: true);
         return 0;
     }
 
