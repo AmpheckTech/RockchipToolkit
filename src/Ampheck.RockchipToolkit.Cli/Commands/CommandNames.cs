@@ -15,6 +15,9 @@ internal static class CommandNames {
     public const string Reset = "reset";
     public const string Server = "server";
     public const string ServerNodaemon = "server nodaemon";
+    public const string ServerStart = "server start";
+    public const string ServerStop = "server stop";
+    public const string ServerStatus = "server status";
     public const string Discover = "discover";
     public const string Adb = "adb";
     public const string AdbPrefix = Adb + " ";

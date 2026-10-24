@@ -28,7 +28,9 @@ internal static class ToolkitEndpointResolver {
             : null;
     }
 
-    private static async Task<bool> IsReachableAsync(ToolkitEndpoint endpoint, CancellationToken cancellationToken) {
+    public static async Task<bool> IsReachableAsync(
+        ToolkitEndpoint endpoint,
+        CancellationToken cancellationToken) {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMilliseconds(250));
         IPAddress[] addresses;

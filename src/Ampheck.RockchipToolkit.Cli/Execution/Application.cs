@@ -12,6 +12,12 @@ namespace Ampheck.RockchipToolkit.Cli.Execution;
 
 internal static class Application {
     public static async Task<int> RunAsync(string[] args) {
+        var daemon = DaemonLaunchContext.Parse(args);
+        using var daemonLog = DaemonLogFile.Open(
+            daemon.LogPath);
+        var worker = ToolkitWorkerInvocation.Parse(
+            daemon.Arguments);
+        args = worker.Arguments;
         var verboseRequested = HasOption(args, "--verbose", "-v");
         var serverProcess =
             args.Length >= 2 &&
@@ -93,9 +99,44 @@ internal static class Application {
                 await RunServerAsync(
                         options,
                         loggerFactory,
-                        logger)
+                        logger,
+                        daemon.StatePath)
                     .ConfigureAwait(false);
                 return 0;
+            }
+
+            if (command == CommandNames.ServerStart) {
+                await LocalServerManager.StartAsync(
+                        verboseRequested,
+                        console)
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            if (command == CommandNames.ServerStop) {
+                await LocalServerManager.StopAsync(console)
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            if (command == CommandNames.ServerStatus) {
+                await LocalServerManager.ShowStatusAsync(console)
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            if (!worker.IsWorker &&
+                string.IsNullOrWhiteSpace(
+                    Environment.GetEnvironmentVariable(
+                        "ARKT_SERVER")) &&
+                string.IsNullOrWhiteSpace(
+                    options.ServerEndpoint)) {
+                await LocalServerManager.EnsureRunningAsync(
+                        verboseRequested,
+                        console)
+                    .ConfigureAwait(false);
+                options.ServerEndpoint =
+                    ToolkitServerDefaults.Endpoint;
             }
 
             if (command.StartsWith(
@@ -128,10 +169,7 @@ internal static class Application {
                     .ConfigureAwait(false);
             }
 
-            var directWorker =
-                Environment.GetEnvironmentVariable(
-                    "ARKT_DIRECT_WORKER") == "1";
-            if (!directWorker) {
+            if (!worker.IsWorker) {
                 var endpoint =
                     await ToolkitEndpointResolver.ResolveAsync(
                             options,
@@ -148,7 +186,7 @@ internal static class Application {
                 }
             }
 
-            using var operationLock = directWorker
+            using var operationLock = worker.IsWorker
                 ? null
                 : OperationLock.Acquire();
             var result = await RunInProcessAsync(
@@ -157,7 +195,7 @@ internal static class Application {
                     verboseRequested,
                     loggerFactory,
                     console,
-                    directWorker)
+                    worker)
                 .ConfigureAwait(false);
 
             logger.LogInformation(
@@ -182,21 +220,21 @@ internal static class Application {
         bool verbose,
         ILoggerFactory loggerFactory,
         ConsoleRenderer console,
-        bool directWorker) {
+        ToolkitWorkerInvocation worker) {
         var request = ToolkitRequestFactory.Create(
             command,
             options,
             verbose);
         var executor = new ToolkitExecutor(
             loggerFactory,
-            ToolkitTransferLimits.FromEnvironment());
-        using var printer = directWorker
+            worker.Limits);
+        using var printer = worker.IsWorker
             ? null
             : new ToolkitEventPrinter(console);
         var result = await executor.ExecuteAsync(
                 request,
                 async value => {
-                    if (directWorker) {
+                    if (worker.IsWorker) {
                         await Console.Out.WriteLineAsync(
                                 ToolkitWorkerEvent.Encode(value))
                             .ConfigureAwait(false);
@@ -220,7 +258,8 @@ internal static class Application {
     private static async Task RunServerAsync(
         CommandOptions options,
         ILoggerFactory loggerFactory,
-        ILogger logger) {
+        ILogger logger,
+        string? statePath) {
         var endpoint = ToolkitEndpoint.Parse(
             options.ServerListen
             ?? throw new ArgumentException(
@@ -237,6 +276,8 @@ internal static class Application {
         var limits = CreateTransferLimits(options);
         var serialHistoryKiB =
             options.ServerSerialHistoryKiB ?? 256;
+        var stateStore =
+            new LocalServerStateStore(statePath);
         if (serialHistoryKiB <= 0) {
             throw new ArgumentException(
                 "--serial-history-kib must be greater than zero.");
@@ -266,7 +307,8 @@ internal static class Application {
                         checked(serialHistoryKiB * 1024),
                     IdleTimeout = idleSeconds <= 0
                         ? Timeout.InfiniteTimeSpan
-                        : TimeSpan.FromSeconds(idleSeconds)
+                        : TimeSpan.FromSeconds(idleSeconds),
+                    OnListening = stateStore.WriteCurrentProcess
                 },
                 new ToolkitProcessExecutor(limits),
                 loggerFactory,

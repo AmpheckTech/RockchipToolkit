@@ -1,6 +1,6 @@
 namespace Ampheck.Serial;
 
-internal static class SerialPortDiscovery {
+public static class SerialPortDiscovery {
     private static readonly string[] LinuxPatterns = [
         "ttyUSB*",
         "ttyACM*",

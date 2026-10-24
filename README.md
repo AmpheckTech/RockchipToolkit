@@ -29,26 +29,29 @@ chmod +x arkt
 
 ## 本机直接使用
 
-RockUSB 和串口命令会先探测本机 `127.0.0.1:5070`。ADB 默认使用本机
-`5037` 端口。
-
-如果本机没有 Server，RockUSB 和 ADB 操作会直接在本机执行。串口需要持久打开，因此要先启动 Server：
+普通命令会探测本机 `127.0.0.1:5070`。Server 未运行时会在后台自动启动，
+后续命令共用同一个 Server 和 USB/串口状态。ADB 默认使用 `5037` 端口。
 
 ```bash
-./arkt server nodaemon --hostname arkt-server
+arkt server status
+arkt server start
+arkt server stop
 ```
 
-Server 启动后，在另一个终端执行：
+Server 以当前用户运行。Linux 下需要给该用户配置 USB/串口 udev 权限或加入
+相应设备组；也可以直接用 `sudo` 启动命令，让自动启动的 Server 获得权限。
+
+启动后可以直接使用串口：
 
 ```bash
-./arkt serial open /dev/ttyUSB0
-./arkt serial terminal /dev/ttyUSB0
+arkt serial open /dev/ttyUSB0
+arkt serial terminal /dev/ttyUSB0
 ```
 
 按 `Ctrl+]` 退出当前串口终端。物理串口会继续保持打开；需要关闭时执行：
 
 ```bash
-./arkt serial close /dev/ttyUSB0
+arkt serial close /dev/ttyUSB0
 ```
 
 ## 远程使用

@@ -53,6 +53,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
         ObjectDisposedException.ThrowIf(
             Volatile.Read(ref _disposed) != 0,
             this);
+        ServerAccessDiagnostics.Report(_logger);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
         var address = _options.Endpoint.Host.Equals(
             "localhost",
@@ -91,6 +92,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
         var monitorTask = MonitorIdleAsync(stop.Token);
         var adbTask = RunAdbAsync(stop.Token);
         try {
+            _options.OnListening?.Invoke();
             while (!stop.IsCancellationRequested) {
                 TcpClient client;
                 try {
@@ -115,6 +117,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
                     TaskScheduler.Default);
             }
         } finally {
+            await stop.CancelAsync().ConfigureAwait(false);
             listener.Stop();
             await Task.WhenAll(_clients.Values)
                 .ConfigureAwait(false);

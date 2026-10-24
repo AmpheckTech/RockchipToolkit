@@ -17,7 +17,8 @@ internal static class AdbCommandRunner {
         ILogger logger,
         ConsoleRenderer console) {
         try {
-            var environment = AdbEnvironment.Resolve();
+            var environment = AdbEnvironment.Resolve(
+                options.ServerEndpoint);
             var client = new AdbClient(
                 environment.Client,
                 loggerFactory: loggerFactory);

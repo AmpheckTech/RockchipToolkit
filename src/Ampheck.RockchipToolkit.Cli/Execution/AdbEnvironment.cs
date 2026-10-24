@@ -7,9 +7,14 @@ namespace Ampheck.RockchipToolkit.Cli.Execution;
 internal sealed record AdbEnvironment(
     AdbClientOptions Client,
     ToolkitEndpoint? Toolkit) {
-    public static AdbEnvironment Resolve() {
+    public static AdbEnvironment Resolve(
+        string? requestedEndpoint = null) {
         var server = Environment.GetEnvironmentVariable(
             "ARKT_SERVER");
+        if (!string.IsNullOrWhiteSpace(requestedEndpoint)) {
+            server = requestedEndpoint;
+        }
+
         if (string.IsNullOrWhiteSpace(server)) {
             return new AdbEnvironment(
                 new AdbClientOptions(),

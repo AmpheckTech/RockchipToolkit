@@ -18,4 +18,5 @@ public sealed record ToolkitHostOptions {
     public int SerialHistoryBytes { get; init; } =
         256 * 1024;
     public int AdbPort { get; init; } = AdbDefaults.ServerPort;
+    public Action? OnListening { get; init; }
 }

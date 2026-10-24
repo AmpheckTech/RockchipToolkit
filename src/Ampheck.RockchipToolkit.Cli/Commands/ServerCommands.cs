@@ -76,8 +76,36 @@ internal static class ServerCommands {
             return 0;
         });
         server.Add(nodaemon);
+        server.Add(CreateControlCommand(
+            state,
+            "start",
+            CommandNames.ServerStart,
+            "Start the toolkit server in the background."));
+        server.Add(CreateControlCommand(
+            state,
+            "stop",
+            CommandNames.ServerStop,
+            "Stop the background toolkit server."));
+        server.Add(CreateControlCommand(
+            state,
+            "status",
+            CommandNames.ServerStatus,
+            "Show background toolkit server status."));
         root.Add(server);
         root.Add(CreateDiscoverCommand(state));
+    }
+
+    private static Command CreateControlCommand(
+        CommandParseState state,
+        string name,
+        string canonicalCommand,
+        string description) {
+        var command = new Command(name, description);
+        command.SetAction(_ => {
+            state.Command = canonicalCommand;
+            return 0;
+        });
+        return command;
     }
 
     private static Command CreateDiscoverCommand(

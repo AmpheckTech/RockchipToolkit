@@ -29,47 +29,4 @@ public sealed record ToolkitTransferLimits {
         }
     }
 
-    public static ToolkitTransferLimits FromEnvironment() {
-        var defaults = Default;
-        return new ToolkitTransferLimits {
-            MaximumAttachmentBytes = ReadLong(
-                "ARKT_MAX_ATTACHMENT_BYTES",
-                defaults.MaximumAttachmentBytes),
-            MaximumRequestBytes = ReadLong(
-                "ARKT_MAX_REQUEST_BYTES",
-                defaults.MaximumRequestBytes),
-            MaximumExpandedBytes = ReadLong(
-                "ARKT_MAX_EXPANDED_BYTES",
-                defaults.MaximumExpandedBytes),
-            MaximumAttachments = ReadInt(
-                "ARKT_MAX_ATTACHMENTS",
-                defaults.MaximumAttachments),
-            MaximumArchiveEntries = ReadInt(
-                "ARKT_MAX_ARCHIVE_ENTRIES",
-                defaults.MaximumArchiveEntries),
-            MaximumArchivePathLength = ReadInt(
-                "ARKT_MAX_ARCHIVE_PATH_LENGTH",
-                defaults.MaximumArchivePathLength)
-        };
-    }
-
-    private static long ReadLong(
-        string name,
-        long fallback) {
-        return long.TryParse(
-                Environment.GetEnvironmentVariable(name),
-                out var value)
-            ? value
-            : fallback;
-    }
-
-    private static int ReadInt(
-        string name,
-        int fallback) {
-        return int.TryParse(
-                Environment.GetEnvironmentVariable(name),
-                out var value)
-            ? value
-            : fallback;
-    }
 }
