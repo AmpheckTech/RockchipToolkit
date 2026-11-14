@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="src/Ampheck.RockchipToolkit.Generators/Ampheck.RockchipToolkit.Generators.csproj" />
   <Project Path="src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj" />
   <Project Path="src/Ampheck.Adb/Ampheck.Adb.csproj" />
   <Project Path="src/Transports/Ampheck.RockchipToolkit.Transport.LibUsb/Ampheck.RockchipToolkit.Transport.LibUsb.csproj" />

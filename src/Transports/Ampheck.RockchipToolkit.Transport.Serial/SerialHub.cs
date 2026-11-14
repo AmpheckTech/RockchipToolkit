@@ -141,6 +141,14 @@ internal sealed class SerialHub : IAsyncDisposable {
         }
     }
 
+    public void ClearHistory() {
+        lock (_sync) {
+            _historyStart = 0;
+            _historyLength = 0;
+            Array.Clear(_history);
+        }
+    }
+
     public async ValueTask DisposeAsync() {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) {
             return;

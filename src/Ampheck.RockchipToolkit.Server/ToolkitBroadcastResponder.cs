@@ -4,8 +4,7 @@ using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Server;
 
-internal sealed class ToolkitBroadcastResponder(
-    ToolkitHostOptions options) : IAsyncDisposable {
+internal sealed class ToolkitBroadcastResponder(ToolkitHostOptions options) : IAsyncDisposable {
     private readonly CancellationTokenSource _stop = new();
     private UdpClient? _client;
     private Task? _loop;

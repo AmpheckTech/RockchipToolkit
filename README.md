@@ -85,6 +85,23 @@ Server 设置了 token 时：
 export ARKT_SERVER_TOKEN=your-token
 ```
 
+自动化和 Web UI 使用同一套 Server API：
+
+```text
+WS   /api/rpc                    JSON-RPC 2.0
+PUT  /api/blobs/{id}             上传 blob
+GET  /api/blobs/{id}             下载 blob
+WS   /api/serial/{sessionId}     串口二进制流
+WS   /api/adb/{sessionId}        ADB Shell 二进制流
+```
+
+token 通过 `Authorization: Bearer <token>` 传递。浏览器 WebSocket
+不能设置自定义请求头时，可以在 URL 后附加 `?token=<token>`。
+
+长操作使用 `tasks.list`、`tasks.get`、`tasks.cancel` 和
+`tasks.subscribe` 管理。进度、日志和状态通过 `task.event`
+notification 发送；`server.info` 返回当前可用的 RPC 方法列表。
+
 客户端名称会显示在 Server 日志中，默认使用机器名。可以覆盖：
 
 ```bash
@@ -98,8 +115,7 @@ export ARKT_CLIENT_NAME=build-pc-01
 --hostname NAME          局域网发现和日志中显示的 Server 名称
 --token TOKEN            可选的客户端访问 token
 --idle-timeout SECONDS   无客户端连接后自动退出，0 表示不退出
---max-attachment-mib N   单个上传附件上限
---max-request-mib N      单次请求上传总量上限
+--max-blob-mib N         单个上传 blob 上限
 --serial-history-kib N   每个串口的历史缓冲大小
 ```
 
@@ -329,6 +345,12 @@ arkt serial terminal /dev/ttyUSB0
 ```bash
 arkt serial history /dev/ttyUSB0
 arkt serial history /dev/ttyUSB0 --bytes 4096
+```
+
+清空已保留的输出：
+
+```bash
+arkt serial clear /dev/ttyUSB0
 ```
 
 关闭串口：

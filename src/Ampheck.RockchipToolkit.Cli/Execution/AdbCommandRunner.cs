@@ -1,220 +1,155 @@
-using Ampheck.Adb;
+using System.Net.WebSockets;
 using Ampheck.RockchipToolkit.Cli.Commands;
+using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
+using Ampheck.RockchipToolkit.Cli.Execution.Serial;
 using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
-using Ampheck.RockchipToolkit.Server.Devices;
-using Ampheck.RockchipToolkit.Transport;
+using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
 
-internal static class AdbCommandRunner {
+internal static partial class AdbCommandRunner {
     public static async Task<int> ExecuteAsync(
         string command,
         CommandOptions options,
-        ILoggerFactory loggerFactory,
         ILogger logger,
         ConsoleRenderer console) {
-        try {
-            var environment = AdbEnvironment.Resolve(
-                options.ServerEndpoint);
-            await AdbServerLauncher.EnsureStartedAsync(
-                    environment.Toolkit)
-                .ConfigureAwait(false);
-
-            var client = new AdbClient(
-                environment.Client,
-                loggerFactory: loggerFactory);
-            return await (command switch {
-                CommandNames.AdbDevices => ListDevicesAsync(
-                    client,
-                    options),
-                CommandNames.AdbShell => RunShellAsync(
-                    client,
-                    options,
-                    logger,
-                    console),
-                CommandNames.AdbPush => PushAsync(
-                    client,
-                    options,
-                    logger,
-                    console),
-                CommandNames.AdbPull => PullAsync(
-                    client,
-                    options,
-                    logger,
-                    console),
-                CommandNames.AdbRebootSystem => RebootAsync(
-                    client,
-                    options,
-                    AdbRebootMode.System,
-                    console),
-                CommandNames.AdbRebootRecovery => RebootAsync(
-                    client,
-                    options,
-                    AdbRebootMode.Recovery,
-                    console),
-                CommandNames.AdbRebootLoader => EnterLoaderAsync(
-                    client,
-                    options,
-                    loggerFactory,
-                    console,
-                    environment.Toolkit),
-                _ => throw new ArgumentException(
-                    $"Unknown ADB command '{command}'.")
-            }).ConfigureAwait(false);
-        } catch (Exception error) when (
-            UsbAccessError.IsPermissionFailure(error)) {
-            throw UsbAccessError.Wrap(error);
+        var endpoint = ToolkitEndpoint.Parse(
+            options.ServerEndpoint ??
+            throw new ArgumentException(
+                "A toolkit server endpoint is required."));
+        var token = Environment.GetEnvironmentVariable(
+            "ARKT_SERVER_TOKEN");
+        var clientName = Environment.GetEnvironmentVariable(
+            "ARKT_CLIENT_NAME");
+        await using var client = new ToolkitRpcClient(
+            endpoint,
+            token,
+            clientName);
+        using var printer = new ToolkitEventPrinter(console);
+        void ReportEvent(TaskEventNotification value) {
+            printer.Write(value);
         }
+
+        await client.RequestAsync<EmptyParams, EmptyResult>(
+                JsonRpcMethods.AdbServerEnsure,
+                new EmptyParams(),
+                ReportEvent)
+            .ConfigureAwait(false);
+        return command switch {
+            CommandNames.AdbDevices =>
+                await ListDevicesAsync(
+                        client,
+                        options,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbShell =>
+                await RunShellAsync(
+                        client,
+                        options,
+                        console,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbPush =>
+                await PushAsync(
+                        client,
+                        options,
+                        console,
+                        logger,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbPull =>
+                await PullAsync(
+                        client,
+                        options,
+                        console,
+                        logger,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbRebootSystem =>
+                await RebootAsync(
+                        client,
+                        options,
+                        ToolkitAdbRebootMode.System,
+                        console,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbRebootRecovery =>
+                await RebootAsync(
+                        client,
+                        options,
+                        ToolkitAdbRebootMode.Recovery,
+                        console,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            CommandNames.AdbRebootLoader =>
+                await RebootToLoaderAsync(
+                        client,
+                        options,
+                        console,
+                        ReportEvent)
+                    .ConfigureAwait(false),
+            _ => throw new ArgumentException(
+                $"Unknown ADB command '{command}'.")
+        };
     }
 
     private static async Task<int> ListDevicesAsync(
-        AdbClient client,
-        CommandOptions options) {
-        var devices = await client.GetDevicesAsync()
+        ToolkitRpcClient client,
+        CommandOptions options,
+        Action<TaskEventNotification> report) {
+        var result = await client.RequestAsync<
+            AdbDevicesParams,
+            AdbDevicesResult>(
+                JsonRpcMethods.AdbDevices,
+                new AdbDevicesParams {
+                    SerialNumber = options.AdbSerial
+                },
+                report)
             .ConfigureAwait(false);
-        foreach (var device in FilterDevices(devices, options)) {
-            var identity = FormatIdentity(device);
+        foreach (var device in result.Devices) {
             Console.WriteLine(
-                $"{device.SerialNumber}\t" +
-                $"{FormatState(device.State)}\t{identity}");
+                $"{device.SerialNumber}\t{device.State}\t" +
+                FormatDetails(device));
         }
 
-        Console.Out.Flush();
-        return 0;
-    }
-
-    private static async Task<int> PushAsync(
-        AdbClient client,
-        CommandOptions options,
-        ILogger logger,
-        ConsoleRenderer console) {
-        var source = RequireTransferPath(
-            options.AdbSource,
-            "local source");
-        var destination = RequireTransferPath(
-            options.AdbDestination,
-            "remote destination");
-        if (!File.Exists(source)) {
-            throw new FileNotFoundException(
-                $"Local file '{source}' was not found.",
-                source);
-        }
-
-        if (Directory.Exists(source)) {
-            throw new NotSupportedException(
-                "Directory push is not supported.");
-        }
-
-        var remotePath = destination.EndsWith('/')
-            ? destination + Path.GetFileName(source)
-            : destination;
-        var device = await SelectDeviceAsync(
-                client,
-                options)
-            .ConfigureAwait(false);
-        logger.LogInformation(
-            "Pushing {LocalPath} to {SerialNumber}:{RemotePath}",
-            source,
-            device.SerialNumber,
-            remotePath);
-        using var progress = CreateProgress(
-            console,
-            Path.GetFileName(source),
-            new FileInfo(source).Length);
-        await device.PushAsync(
-                source,
-                remotePath,
-                progress: progress)
-            .ConfigureAwait(false);
-        Console.WriteLine($"pushed {source} -> {remotePath}");
-        Console.Out.Flush();
-        return 0;
-    }
-
-    private static async Task<int> PullAsync(
-        AdbClient client,
-        CommandOptions options,
-        ILogger logger,
-        ConsoleRenderer console) {
-        var source = RequireTransferPath(
-            options.AdbSource,
-            "remote source");
-        var destination = RequireTransferPath(
-            options.AdbDestination,
-            "local destination");
-        var device = await SelectDeviceAsync(
-                client,
-                options)
-            .ConfigureAwait(false);
-        var remoteInfo = await device.StatFileAsync(source)
-            .ConfigureAwait(false);
-        if (remoteInfo.IsDirectory) {
-            throw new NotSupportedException(
-                "Directory pull is not supported.");
-        }
-
-        var destinationIsDirectory =
-            Directory.Exists(destination) ||
-            Path.EndsInDirectorySeparator(destination);
-        if (destinationIsDirectory) {
-            Directory.CreateDirectory(destination);
-            destination = Path.Combine(
-                destination,
-                remoteInfo.Name);
-        }
-
-        logger.LogInformation(
-            "Pulling {SerialNumber}:{RemotePath} to {LocalPath}",
-            device.SerialNumber,
-            source,
-            destination);
-        using var progress = CreateProgress(
-            console,
-            remoteInfo.Name,
-            remoteInfo.Size);
-        await device.PullAsync(
-                source,
-                destination,
-                progress)
-            .ConfigureAwait(false);
-        Console.WriteLine($"pulled {source} -> {destination}");
         Console.Out.Flush();
         return 0;
     }
 
     private static async Task<int> RunShellAsync(
-        AdbClient client,
+        ToolkitRpcClient client,
         CommandOptions options,
-        ILogger logger,
-        ConsoleRenderer console) {
-        var device = await SelectDeviceAsync(
-                client,
-                options)
-            .ConfigureAwait(false);
-        logger.LogInformation(
-            "Using ADB device {SerialNumber}",
-            device.SerialNumber);
+        ConsoleRenderer console,
+        Action<TaskEventNotification> report) {
         if (options.AdbShellCommand is null &&
             options.AdbShellArguments.Length == 0) {
-            await using var shell = await device.OpenShellAsync()
+            return await RunInteractiveShellAsync(
+                    client,
+                    options,
+                    console,
+                    report)
                 .ConfigureAwait(false);
-            await InteractiveShellRunner.RunAsync(shell, console)
-                .ConfigureAwait(false);
-            return 0;
         }
 
         var command = options.AdbShellCommand ??
             AdbShellCommandBuilder.FromArguments(
                 options.AdbShellArguments);
-        var output = await device.ExecuteShellAsync(
-                command)
+        var result = await client.RequestAsync<
+            AdbShellParams,
+            TextResult>(
+                JsonRpcMethods.AdbShell,
+                new AdbShellParams {
+                    SerialNumber = options.AdbSerial,
+                    Command = command
+                },
+                report)
             .ConfigureAwait(false);
-        Console.Out.Write(output);
-        if (output.Length > 0 &&
-            !output.EndsWith('\n')) {
+        Console.Out.Write(result.Text);
+        if (result.Text.Length > 0 &&
+            !result.Text.EndsWith('\n')) {
             Console.WriteLine();
         }
 
@@ -222,20 +157,65 @@ internal static class AdbCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RebootAsync(
-        AdbClient client,
+    private static async Task<int> RunInteractiveShellAsync(
+        ToolkitRpcClient client,
         CommandOptions options,
-        AdbRebootMode mode,
-        ConsoleRenderer console) {
-        var device = await SelectDeviceAsync(
-                client,
-                options)
+        ConsoleRenderer console,
+        Action<TaskEventNotification> report) {
+        using var socket = await client.OpenStreamAsync<
+            AdbShellSessionParams>(
+                JsonRpcMethods.AdbShellSession,
+                new AdbShellSessionParams {
+                    SerialNumber = options.AdbSerial
+                },
+                "/api/adb",
+                "arkt.adb.v1",
+                report)
             .ConfigureAwait(false);
-        var name = mode == AdbRebootMode.Recovery
+        using var stop = new CancellationTokenSource();
+        var output = PumpBinaryOutputAsync(socket, stop.Token);
+        try {
+            await SerialTerminalRunner.RunAsync(
+                    async (data, cancellationToken) => {
+                        await socket.SendAsync(
+                                data,
+                                WebSocketMessageType.Binary,
+                                endOfMessage: true,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    },
+                    output,
+                    console,
+                    stop.Token,
+                    "Interactive ADB shell. Use Ctrl+] to leave.")
+                .ConfigureAwait(false);
+        } finally {
+            await stop.CancelAsync().ConfigureAwait(false);
+            TryCloseSocket(socket);
+            await IgnoreCancellationAsync(output)
+                .ConfigureAwait(false);
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> RebootAsync(
+        ToolkitRpcClient client,
+        CommandOptions options,
+        ToolkitAdbRebootMode mode,
+        ConsoleRenderer console,
+        Action<TaskEventNotification> report) {
+        var name = mode == ToolkitAdbRebootMode.Recovery
             ? "recovery"
             : "normal";
         console.WriteStatus($"Requesting {name} reboot");
-        await device.RebootAsync(mode)
+        await client.RequestAsync<AdbRebootParams, EmptyResult>(
+                JsonRpcMethods.AdbReboot,
+                new AdbRebootParams {
+                    SerialNumber = options.AdbSerial,
+                    Mode = mode
+                },
+                report)
             .ConfigureAwait(false);
         console.WriteStatus(
             $"{name} reboot requested",
@@ -243,136 +223,78 @@ internal static class AdbCommandRunner {
         return 0;
     }
 
-    private static async Task<int> EnterLoaderAsync(
-        AdbClient client,
+    private static async Task<int> RebootToLoaderAsync(
+        ToolkitRpcClient client,
         CommandOptions options,
-        ILoggerFactory loggerFactory,
         ConsoleRenderer console,
-        ToolkitEndpoint? toolkitEndpoint) {
-        var device = await SelectDeviceAsync(
-                client,
-                options)
-            .ConfigureAwait(false);
+        Action<TaskEventNotification> report) {
         console.WriteStatus("Requesting Loader mode");
-        await device.RebootAsync(AdbRebootMode.Bootloader)
+        await client.RequestAsync<AdbRebootParams, EmptyResult>(
+                JsonRpcMethods.AdbReboot,
+                new AdbRebootParams {
+                    SerialNumber = options.AdbSerial,
+                    Mode = ToolkitAdbRebootMode.Bootloader
+                },
+                report)
             .ConfigureAwait(false);
         console.WriteStatus("Waiting for Rockchip Loader");
-        if (toolkitEndpoint is not null) {
-            return await WaitForRemoteLoaderAsync(
-                    toolkitEndpoint,
-                    options.VendorId,
-                    options.ProductId,
-                    options,
-                    console)
-                .ConfigureAwait(false);
-        }
-
-        return await DeviceConnector.WaitForLoaderAsync(
-                options.Transport switch {
-                    TransportKind.RockUsb =>
-                        ToolkitTransport.RockUsb,
-                    TransportKind.LibUsb =>
-                        ToolkitTransport.LibUsb,
-                    _ => ToolkitTransport.Auto
-                },
-                options.VendorId,
-                options.ProductId,
-                message => {
-                    console.WriteStatus(message, complete: true);
-                    return ValueTask.CompletedTask;
-                },
-                loggerFactory,
-                CancellationToken.None)
-            .ConfigureAwait(false);
-    }
-
-    private static async Task<int> WaitForRemoteLoaderAsync(
-        ToolkitEndpoint endpoint,
-        ushort? vendorId,
-        ushort? productId,
-        CommandOptions options,
-        ConsoleRenderer console) {
-        var token = Environment.GetEnvironmentVariable(
-            "ARKT_SERVER_TOKEN");
-        await using var client = new ToolkitClient(
-            endpoint,
-            token);
+        var target = new DeviceTarget {
+            Transport = options.Transport switch {
+                TransportKind.RockUsb =>
+                    ToolkitTransport.RockUsb,
+                TransportKind.LibUsb =>
+                    ToolkitTransport.LibUsb,
+                _ => ToolkitTransport.Auto
+            },
+            VendorId = options.VendorId,
+            ProductId = options.ProductId
+        };
         for (var attempt = 0; attempt < 40; attempt++) {
-            var found = 0;
-            var request = new ToolkitRequest {
-                Operation = ToolkitOperation.Devices,
-                Transport = options.Transport switch {
-                    TransportKind.RockUsb =>
-                        ToolkitTransport.RockUsb,
-                    TransportKind.LibUsb =>
-                        ToolkitTransport.LibUsb,
-                    _ => ToolkitTransport.Auto
-                },
-                VendorId = vendorId,
-                ProductId = productId
-            };
-            await client.ExecuteAsync(
-                    request,
-                    value => {
-                        if (value.Message.Contains(
-                                "Loader",
-                                StringComparison.OrdinalIgnoreCase) ||
-                            value.Message.Contains(
-                                "MaskRom",
-                                StringComparison.OrdinalIgnoreCase)) {
-                            Volatile.Write(ref found, 1);
-                        }
-                    })
+            var devices = await client.RequestAsync<
+                DeviceListParams,
+                DeviceListResult>(
+                    JsonRpcMethods.DeviceList,
+                    new DeviceListParams { Target = target },
+                    report)
                 .ConfigureAwait(false);
-            if (Volatile.Read(ref found) != 0) {
+            if (devices.Devices.Any(device =>
+                device.Mode is "Loader" or "MaskRom")) {
                 console.WriteStatus(
                     "Device entered Loader mode",
                     complete: true);
-                await Task.Delay(
-                        TimeSpan.FromMilliseconds(500))
-                    .ConfigureAwait(false);
+                await Task.Delay(500).ConfigureAwait(false);
                 return 0;
             }
 
-            await Task.Delay(
-                    TimeSpan.FromMilliseconds(500))
-                .ConfigureAwait(false);
+            await Task.Delay(500).ConfigureAwait(false);
         }
 
         throw new TimeoutException(
             "The device did not enter Loader mode within 20 seconds.");
     }
 
-    private static async Task<AdbDevice> SelectDeviceAsync(
-        AdbClient client,
-        CommandOptions options) {
-        var devices = await client.GetDevicesAsync()
-            .ConfigureAwait(false);
-        var matching = FilterDevices(devices, options).ToArray();
-        if (matching.Length == 0) {
-            throw new InvalidOperationException(
-                "No matching ADB device was found.");
-        }
+    private static async Task PumpBinaryOutputAsync(
+        ClientWebSocket socket,
+        CancellationToken cancellationToken) {
+        var buffer = new byte[16 * 1024];
+        while (true) {
+            var result = await socket.ReceiveAsync(
+                    buffer,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.MessageType == WebSocketMessageType.Close) {
+                return;
+            }
 
-        if (matching.Length > 1) {
-            throw new InvalidOperationException(
-                "Multiple ADB devices were found. Use --serial to select one.");
+            await SerialTerminalRunner.WriteOutputAsync(
+                    buffer.AsMemory(0, result.Count),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
-
-        return matching[0];
     }
 
-    private static IEnumerable<AdbDevice> FilterDevices(
-        IEnumerable<AdbDevice> devices,
-        CommandOptions options) {
-        return devices.Where(device =>
-            options.AdbSerial is null ||
-            device.SerialNumber.Equals(
-                options.AdbSerial,
-                StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string FormatDetails(AdbDevice device) {
+    private static string FormatDetails(
+        AdbDeviceDescriptor device) {
         var details = new[] {
             FormatField("product", device.Product),
             FormatField("model", device.Model),
@@ -382,47 +304,44 @@ internal static class AdbCommandRunner {
         return text.Length == 0 ? "adb server" : text;
     }
 
-    private static string FormatIdentity(AdbDevice device) {
-        return FormatDetails(device);
-    }
-
     private static string? FormatField(
         string name,
-        string? value) {
-        return string.IsNullOrWhiteSpace(value)
+        string? value) =>
+        string.IsNullOrWhiteSpace(value)
             ? null
             : $"{name}:{value}";
-    }
-
-    private static string FormatState(AdbDeviceState state) {
-        return state switch {
-            AdbDeviceState.Device => "device",
-            AdbDeviceState.Offline => "offline",
-            AdbDeviceState.Unauthorized => "unauthorized",
-            AdbDeviceState.Recovery => "recovery",
-            AdbDeviceState.Sideload => "sideload",
-            AdbDeviceState.Bootloader => "bootloader",
-            _ => "unknown"
-        };
-    }
-
-    private static ProgressBar? CreateProgress(
-        ConsoleRenderer console,
-        string label,
-        long total) {
-        return console.IsInteractive && total > 0
-            ? new ProgressBar(console, label, total)
-            : null;
-    }
 
     private static string RequireTransferPath(
         string? value,
-        string description) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            throw new ArgumentException(
-                $"A {description} is required.");
-        }
+        string description) =>
+        string.IsNullOrWhiteSpace(value)
+            ? throw new ArgumentException(
+                $"An ADB {description} is required.")
+            : value;
 
-        return value;
+    private static void TryCloseSocket(ClientWebSocket socket) {
+        try {
+            if (socket.State is
+                WebSocketState.Open or
+                WebSocketState.CloseReceived) {
+                socket.CloseOutputAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        null,
+                        CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+        } catch (Exception error) when (
+            error is WebSocketException or
+            ObjectDisposedException) {
+        }
+    }
+
+    private static async Task IgnoreCancellationAsync(Task task) {
+        try {
+            await task.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+        } catch (WebSocketException) {
+        }
     }
 }

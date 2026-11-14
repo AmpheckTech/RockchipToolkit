@@ -11,8 +11,13 @@
     <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.LibUsb/Ampheck.RockchipToolkit.Transport.LibUsb.csproj" />
     <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.RockUsb/Ampheck.RockchipToolkit.Transport.RockUsb.csproj" />
     <ProjectReference Include="../Ampheck.RockchipToolkit.Rpc/Ampheck.RockchipToolkit.Rpc.csproj" />
+    <ProjectReference
+      Include="../Ampheck.RockchipToolkit.Generators/Ampheck.RockchipToolkit.Generators.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.Serial/Ampheck.RockchipToolkit.Transport.Serial.csproj" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
   </ItemGroup>
 </Project>

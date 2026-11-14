@@ -113,10 +113,10 @@ internal sealed class InputFile : IAsyncDisposable {
             response.Content.Headers.ContentLength;
         if (contentLength is { } declaredLength &&
             declaredLength >
-            limits.MaximumAttachmentBytes) {
+            limits.MaximumBlobBytes) {
             throw new InvalidDataException(
                 $"Remote input exceeds the configured " +
-                $"{limits.MaximumAttachmentBytes} byte limit.");
+                $"{limits.MaximumBlobBytes} byte limit.");
         }
 
         var temporaryPath = System.IO.Path.Combine(
@@ -145,7 +145,7 @@ internal sealed class InputFile : IAsyncDisposable {
                 }
 
                 if (read >
-                    limits.MaximumAttachmentBytes - totalRead) {
+                    limits.MaximumBlobBytes - totalRead) {
                     throw new InvalidDataException(
                         "Remote input exceeds the configured size limit.");
                 }

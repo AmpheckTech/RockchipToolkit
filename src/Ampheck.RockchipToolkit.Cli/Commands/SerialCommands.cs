@@ -12,6 +12,7 @@ internal static class SerialCommands {
         serial.Add(CreateListCommand(state));
         serial.Add(CreateOpenCommand(state));
         serial.Add(CreateCloseCommand(state));
+        serial.Add(CreateClearCommand(state));
         serial.Add(CreateTerminalCommand(state));
         serial.Add(CreateHistoryCommand(state));
         return serial;
@@ -115,6 +116,24 @@ internal static class SerialCommands {
                         "--bytes must be greater than zero.");
                 }
             });
+        return command;
+    }
+
+    private static Command CreateClearCommand(
+        CommandParseState state) {
+        var command = new Command(
+            "clear",
+            "Clear retained output for an open serial port.");
+        var port = PortArgument();
+        command.Add(port);
+        CommandOptionsBinder.AddSerialEndpointOptions(
+            command,
+            state,
+            CommandNames.SerialClear,
+            bind: parsed => state.Options.SerialPort =
+                parsed.GetValue(port) ??
+                throw new ArgumentException(
+                    "A serial port is required."));
         return command;
     }
 

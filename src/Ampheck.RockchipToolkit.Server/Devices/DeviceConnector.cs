@@ -1,4 +1,5 @@
 using Ampheck.RockchipToolkit.Rpc;
+using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Transport;
 using Microsoft.Extensions.Logging;
 
@@ -43,35 +44,35 @@ public static class DeviceConnector {
 
     internal static async Task<IReadOnlyList<UsbDeviceInfo>>
         ListAsync(
-            ToolkitRequest request,
+            DeviceTarget target,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) {
         await using var provider = DeviceProviderFactory.Create(
-            request.Transport,
-            request.VendorId,
-            request.ProductId,
+            target.Transport,
+            target.VendorId,
+            target.ProductId,
             loggerFactory);
         var devices = await provider.EnumerateAsync(cancellationToken)
             .ConfigureAwait(false);
         return devices
             .Where(device =>
                 device.Mode != RockchipUsbMode.None &&
-                (!request.VendorId.HasValue ||
-                    device.VendorId == request.VendorId) &&
-                (!request.ProductId.HasValue ||
-                    device.ProductId == request.ProductId))
+                (!target.VendorId.HasValue ||
+                    device.VendorId == target.VendorId) &&
+                (!target.ProductId.HasValue ||
+                    device.ProductId == target.ProductId))
             .ToArray();
     }
 
     internal static async Task<DeviceSession> OpenAsync(
-        ToolkitRequest request,
+        DeviceTarget target,
         ILoggerFactory loggerFactory,
         ILogger logger,
         CancellationToken cancellationToken) {
         var provider = DeviceProviderFactory.Create(
-            request.Transport,
-            request.VendorId,
-            request.ProductId,
+            target.Transport,
+            target.VendorId,
+            target.ProductId,
             loggerFactory);
         try {
             var devices = await provider.EnumerateAsync(cancellationToken)
@@ -81,8 +82,8 @@ public static class DeviceConnector {
                 devices.Count);
             var selected = SelectDevice(
                 devices,
-                request.VendorId,
-                request.ProductId);
+                target.VendorId,
+                target.ProductId);
             if (selected is null) {
                 throw new InvalidOperationException(
                     "No matching RockUSB device was found. " +
@@ -117,13 +118,13 @@ public static class DeviceConnector {
     }
 
     internal static async Task<RockchipUsbMode?> GetModeAsync(
-        ToolkitRequest request,
+        DeviceTarget target,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken) {
         return await GetModeAsync(
-                request.Transport,
-                request.VendorId,
-                request.ProductId,
+                target.Transport,
+                target.VendorId,
+                target.ProductId,
                 loggerFactory,
                 cancellationToken)
             .ConfigureAwait(false);

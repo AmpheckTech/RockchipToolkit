@@ -24,8 +24,7 @@ internal sealed class CommandOptions {
     public string? ServerHostName { get; set; }
     public int? DiscoverySeconds { get; set; }
     public int? ServerIdleSeconds { get; set; }
-    public int? ServerMaxAttachmentMiB { get; set; }
-    public int? ServerMaxRequestMiB { get; set; }
+    public int? ServerMaxBlobMiB { get; set; }
     public int? ServerSerialHistoryKiB { get; set; }
     public string? SerialPort { get; set; }
     public int? SerialBaudRate { get; set; }

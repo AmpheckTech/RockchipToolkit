@@ -11,7 +11,6 @@ internal static class FirmwareArchive {
         ToolkitTransferLimits limits,
         long alreadyExpandedBytes,
         CancellationToken cancellationToken) {
-        ArgumentNullException.ThrowIfNull(limits);
         if (alreadyExpandedBytes < 0 ||
             alreadyExpandedBytes >= limits.MaximumExpandedBytes) {
             throw new InvalidDataException(

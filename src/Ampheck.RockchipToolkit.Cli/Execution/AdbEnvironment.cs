@@ -1,41 +1,8 @@
 using Ampheck.Adb;
-using Ampheck.Adb.Server;
-using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
 
-internal sealed record AdbEnvironment(
-    AdbClientOptions Client,
-    ToolkitEndpoint? Toolkit) {
-    public static AdbEnvironment Resolve(
-        string? requestedEndpoint = null) {
-        var server = Environment.GetEnvironmentVariable(
-            "ARKT_SERVER");
-        if (!string.IsNullOrWhiteSpace(requestedEndpoint)) {
-            server = requestedEndpoint;
-        }
-
-        if (string.IsNullOrWhiteSpace(server)) {
-            return new AdbEnvironment(
-                new AdbClientOptions {
-                    Server = new AdbServerOptions {
-                        Port = GetConfiguredPort()
-                    }
-                },
-                Toolkit: null);
-        }
-
-        var endpoint = ToolkitEndpoint.Parse(server);
-        return new AdbEnvironment(
-            new AdbClientOptions {
-                Server = new AdbServerOptions {
-                    Host = endpoint.Host,
-                    Port = GetConfiguredPort()
-                }
-            },
-            endpoint);
-    }
-
+internal static class AdbEnvironment {
     public static int GetConfiguredPort() =>
         ParsePort(Environment.GetEnvironmentVariable(
             "ARKT_ADB_PORT"));

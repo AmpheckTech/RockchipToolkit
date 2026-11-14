@@ -2,21 +2,33 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
+using Ampheck.RockchipToolkit.Server.Adb;
+using Ampheck.RockchipToolkit.Server.Blobs;
+using Ampheck.RockchipToolkit.Server.Devices;
+using Ampheck.RockchipToolkit.Server.Generated;
+using Ampheck.RockchipToolkit.Server.Serial;
+using Ampheck.RockchipToolkit.Server.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ampheck.RockchipToolkit.Server;
 
-public sealed class ToolkitHost : IAsyncDisposable {
+public sealed partial class ToolkitHost : IAsyncDisposable {
+    private const string RpcProtocol = "arkt.rpc.v1";
+    private const string SerialProtocol = "arkt.serial.v1";
+    private const string AdbProtocol = "arkt.adb.v1";
     private readonly ToolkitHostOptions _options;
-    private readonly IToolkitExecutor _executor;
     private readonly ILogger<ToolkitHost> _logger;
-    private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private readonly CancellationTokenSource _shutdown = new();
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ServiceProvider _services;
+    private readonly BlobStore _blobs;
+    private readonly TaskManager _tasks;
+    private readonly SerialTerminalRegistry _serialTerminals;
+    private readonly AdbToolkitService _adb;
     private readonly ToolkitDiscoveryResponder _discovery;
     private readonly ToolkitBroadcastResponder _broadcast;
-    private readonly ToolkitSerialService _serial;
-    private readonly AdbServerProcess _adb;
+    private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<long, Task> _clients = [];
     private long _activeClients;
     private long _nextClientId;
@@ -26,32 +38,57 @@ public sealed class ToolkitHost : IAsyncDisposable {
 
     public ToolkitHost(
         ToolkitHostOptions options,
-        IToolkitExecutor executor,
         ILoggerFactory? loggerFactory = null,
         ILogger<ToolkitHost>? logger = null) {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _executor = executor ?? throw new ArgumentNullException(nameof(executor));
-        _logger = logger ??
-            loggerFactory?.CreateLogger<ToolkitHost>() ??
-            NullLogger<ToolkitHost>.Instance;
+        _options = options ??
+            throw new ArgumentNullException(nameof(options));
         ValidateOptions(options);
-        _serial = new ToolkitSerialService(
-            loggerFactory ?? NullLoggerFactory.Instance,
-            options.SerialHistoryBytes);
-        _adb = new AdbServerProcess(
-            options.Endpoint.Host,
-            options.AdbPort,
-            loggerFactory ?? NullLoggerFactory.Instance);
-        _discovery = new ToolkitDiscoveryResponder(options, _logger);
+        _loggerFactory = loggerFactory ??
+            NullLoggerFactory.Instance;
+        _logger = logger ??
+            _loggerFactory.CreateLogger<ToolkitHost>();
+        var services = new ServiceCollection();
+        services.AddSingleton(options);
+        services.AddSingleton(options.TransferLimits);
+        services.AddSingleton(_loggerFactory);
+        services.AddSingleton(_ =>
+            new BlobStore(
+                options.TransferLimits.MaximumBlobBytes));
+        services.AddSingleton<TaskManager>();
+        services.AddSingleton<DeviceOperationGate>();
+        services.AddScoped<DeviceAccess>();
+        services.AddSingleton(_ =>
+            new ToolkitSerialService(
+                _loggerFactory,
+                options.SerialHistoryBytes));
+        services.AddSingleton<SerialTerminalRegistry>();
+        services.AddSingleton(_ =>
+            new AdbServerProcess(
+                options.Endpoint.Host,
+                options.AdbPort,
+                _loggerFactory));
+        services.AddGeneratedToolkitServices();
+        _services = services.BuildServiceProvider();
+        _blobs = _services.GetRequiredService<BlobStore>();
+        _tasks = _services.GetRequiredService<TaskManager>();
+        _serialTerminals =
+            _services.GetRequiredService<SerialTerminalRegistry>();
+        _adb = _services.GetRequiredService<AdbToolkitService>();
+        _discovery = new ToolkitDiscoveryResponder(
+            options,
+            _logger);
         _broadcast = new ToolkitBroadcastResponder(options);
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken = default) {
+    public async Task RunAsync(
+        CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(
             Volatile.Read(ref _disposed) != 0,
             this);
         ServerAccessDiagnostics.Report(_logger);
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _shutdown.Token);
         var address = _options.Endpoint.Host.Equals(
             "localhost",
             StringComparison.OrdinalIgnoreCase)
@@ -66,35 +103,30 @@ public sealed class ToolkitHost : IAsyncDisposable {
                 $"Invalid server listen address '{_options.Endpoint.Host}'.");
         }
 
-        var listener = new TcpListener(address, _options.Endpoint.Port);
+        var listener = new TcpListener(
+            address,
+            _options.Endpoint.Port);
         listener.Start();
-        _logger.LogInformation("Toolkit server listening on {Endpoint}", _options.Endpoint);
-        try {
-            _discovery.Start();
-        } catch (Exception error) when (error is SocketException or UnauthorizedAccessException) {
-            _logger.LogWarning(
-                "Toolkit LAN discovery is unavailable: {ErrorMessage}",
-                error.Message);
-        }
-
-        try {
-            _broadcast.Start();
-        } catch (Exception error) when (
-            error is SocketException or UnauthorizedAccessException) {
-            _logger.LogWarning(
-                "Toolkit broadcast discovery is unavailable: {ErrorMessage}",
-                error.Message);
-        }
-
+        _logger.LogInformation(
+            "Toolkit server listening on {Endpoint}",
+            _options.Endpoint);
+        TryStartDiscovery(
+            _discovery.Start,
+            "LAN discovery");
+        TryStartDiscovery(
+            _broadcast.Start,
+            "broadcast discovery");
         var monitorTask = MonitorIdleAsync(stop.Token);
         try {
             _options.OnListening?.Invoke();
             while (!stop.IsCancellationRequested) {
                 TcpClient client;
                 try {
-                    client = await listener.AcceptTcpClientAsync(stop.Token)
+                    client = await listener.AcceptTcpClientAsync(
+                            stop.Token)
                         .ConfigureAwait(false);
-                } catch (OperationCanceledException) when (stop.IsCancellationRequested) {
+                } catch (OperationCanceledException) when (
+                    stop.IsCancellationRequested) {
                     break;
                 }
 
@@ -117,8 +149,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
             listener.Stop();
             await Task.WhenAll(_clients.Values)
                 .ConfigureAwait(false);
-            await monitorTask
-                .ConfigureAwait(false);
+            await monitorTask.ConfigureAwait(false);
         }
     }
 
@@ -127,10 +158,9 @@ public sealed class ToolkitHost : IAsyncDisposable {
             return;
         }
 
-        _shutdown.Cancel();
+        await _shutdown.CancelAsync().ConfigureAwait(false);
         Exception? failure = null;
-        async ValueTask CleanupAsync(
-            Func<ValueTask> dispose) {
+        async ValueTask CleanupAsync(Func<ValueTask> dispose) {
             try {
                 await dispose().ConfigureAwait(false);
             } catch (Exception error) {
@@ -142,12 +172,8 @@ public sealed class ToolkitHost : IAsyncDisposable {
             .ConfigureAwait(false);
         await CleanupAsync(_broadcast.DisposeAsync)
             .ConfigureAwait(false);
-        await CleanupAsync(_serial.DisposeAsync)
-            .ConfigureAwait(false);
-        await CleanupAsync(_adb.DisposeAsync)
-            .ConfigureAwait(false);
         try {
-            _operationGate.Dispose();
+            await _services.DisposeAsync().ConfigureAwait(false);
         } catch (Exception error) {
             failure ??= error;
         }
@@ -163,47 +189,31 @@ public sealed class ToolkitHost : IAsyncDisposable {
         }
     }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken serverToken) {
-        Interlocked.Increment(ref _activeClients);
-        client.NoDelay = true;
+    private void TryStartDiscovery(
+        Action start,
+        string description) {
         try {
-            var stream = client.GetStream();
-            using var socket = await ToolkitWebSocketHandshake.AcceptAsync(stream, serverToken)
-                .ConfigureAwait(false);
-            await using var connection = new ToolkitConnection(
-                socket,
-                _options,
-                _executor,
-                _serial,
-                _adb,
-                _operationGate,
-                _logger,
-                client.Client.RemoteEndPoint?.ToString(),
-                serverToken);
-            await connection.RunAsync().ConfigureAwait(false);
-        } catch (EndOfStreamException) {
-        } catch (Exception error) when (error is IOException or SocketException or
-            OperationCanceledException or InvalidDataException or System.Net.WebSockets.WebSocketException) {
-            _logger.LogDebug(
-                "Toolkit WebSocket client disconnected: {ErrorMessage}",
+            start();
+        } catch (Exception error) when (
+            error is SocketException or UnauthorizedAccessException) {
+            _logger.LogWarning(
+                "{Description} is unavailable: {ErrorMessage}",
+                description,
                 error.Message);
-        } catch (Exception error) {
-            _logger.LogError(
-                error,
-                "Toolkit WebSocket client handler failed");
-        } finally {
-            client.Dispose();
-            Interlocked.Decrement(ref _activeClients);
-            Interlocked.Exchange(ref _lastActivityTimestamp, DateTimeOffset.UtcNow.UtcTicks);
         }
     }
 
-    private async Task MonitorIdleAsync(CancellationToken serverToken) {
+    private async Task MonitorIdleAsync(
+        CancellationToken serverToken) {
         if (_options.IdleTimeout == Timeout.InfiniteTimeSpan) {
             return;
         }
 
-        var interval = TimeSpan.FromMilliseconds(Math.Clamp(_options.IdleTimeout.TotalMilliseconds / 4, 100, 1000));
+        var interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(
+                _options.IdleTimeout.TotalMilliseconds / 4,
+                100,
+                1000));
         try {
             while (!serverToken.IsCancellationRequested) {
                 await Task.Delay(interval, serverToken)
@@ -235,12 +245,15 @@ public sealed class ToolkitHost : IAsyncDisposable {
     private static void ValidateOptions(ToolkitHostOptions options) {
         ArgumentNullException.ThrowIfNull(options.Endpoint);
         if (options.Endpoint.Port is <= 0 or > ushort.MaxValue) {
-            throw new ArgumentOutOfRangeException(nameof(options), "The toolkit server port is invalid.");
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                "The toolkit server port is invalid.");
         }
 
         if (string.IsNullOrWhiteSpace(options.InstanceId) ||
             string.IsNullOrWhiteSpace(options.HostName)) {
-            throw new ArgumentException("The toolkit server identity is invalid.");
+            throw new ArgumentException(
+                "The toolkit server identity is invalid.");
         }
 
         if (options.HostName.Length > 255 ||
@@ -250,12 +263,14 @@ public sealed class ToolkitHost : IAsyncDisposable {
                 "characters or fewer.");
         }
 
-        if (options.IdleTimeout != Timeout.InfiniteTimeSpan && options.IdleTimeout <= TimeSpan.Zero) {
-            throw new ArgumentOutOfRangeException(nameof(options), "The toolkit server idle timeout is invalid.");
+        if (options.IdleTimeout != Timeout.InfiniteTimeSpan &&
+            options.IdleTimeout <= TimeSpan.Zero) {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                "The toolkit server idle timeout is invalid.");
         }
 
         options.TransferLimits.Validate();
-
         if (options.SerialHistoryBytes <= 0) {
             throw new ArgumentOutOfRangeException(
                 nameof(options),

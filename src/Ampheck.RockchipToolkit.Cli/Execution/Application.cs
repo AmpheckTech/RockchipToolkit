@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
-using Ampheck.RockchipToolkit.Cli.Execution.Serial;
 using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
@@ -15,9 +14,7 @@ internal static class Application {
         var daemon = DaemonLaunchContext.Parse(args);
         using var daemonLog = DaemonLogFile.Open(
             daemon.LogPath);
-        var worker = ToolkitWorkerInvocation.Parse(
-            daemon.Arguments);
-        args = worker.Arguments;
+        args = daemon.Arguments;
         var verboseRequested = HasOption(args, "--verbose", "-v");
         var serverProcess =
             args.Length >= 2 &&
@@ -136,8 +133,7 @@ internal static class Application {
                     .ConfigureAwait(false);
             }
 
-            if (!worker.IsWorker &&
-                string.IsNullOrWhiteSpace(
+            if (string.IsNullOrWhiteSpace(
                     Environment.GetEnvironmentVariable(
                         "ARKT_SERVER")) &&
                 string.IsNullOrWhiteSpace(
@@ -153,10 +149,17 @@ internal static class Application {
             if (command.StartsWith(
                 CommandNames.AdbPrefix,
                 StringComparison.Ordinal)) {
+                var adbEndpoint =
+                    await ToolkitEndpointResolver.ResolveAsync(
+                            options,
+                            CancellationToken.None)
+                        .ConfigureAwait(false) ??
+                    throw new InvalidOperationException(
+                        "No toolkit server endpoint is available.");
+                options.ServerEndpoint = adbEndpoint.HostPort;
                 var adbResult = await AdbCommandRunner.ExecuteAsync(
                         command,
                         options,
-                        loggerFactory,
                         logger,
                         console)
                     .ConfigureAwait(false);
@@ -168,45 +171,19 @@ internal static class Application {
                 return adbResult;
             }
 
-            if (command.StartsWith(
-                CommandNames.SerialPrefix,
-                StringComparison.Ordinal)) {
-                return await SerialCommandRunner.RunAsync(
-                        command,
+            var endpoint =
+                await ToolkitEndpointResolver.ResolveAsync(
                         options,
-                        loggerFactory,
-                        logger,
-                        console)
-                    .ConfigureAwait(false);
-            }
-
-            if (!worker.IsWorker) {
-                var endpoint =
-                    await ToolkitEndpointResolver.ResolveAsync(
-                            options,
-                            CancellationToken.None)
-                        .ConfigureAwait(false);
-                if (endpoint is not null) {
-                    options.ServerEndpoint = endpoint.HostPort;
-                    return await ToolkitClientCommandRunner.RunAsync(
-                            command,
-                            options,
-                            logger,
-                            console)
-                        .ConfigureAwait(false);
-                }
-            }
-
-            using var operationLock = worker.IsWorker
-                ? null
-                : OperationLock.Acquire();
-            var result = await RunInProcessAsync(
+                        CancellationToken.None)
+                    .ConfigureAwait(false) ??
+                throw new InvalidOperationException(
+                    "No toolkit server endpoint is available.");
+            options.ServerEndpoint = endpoint.HostPort;
+            var result = await ToolkitClientCommandRunner.RunAsync(
                     command,
                     options,
-                    verboseRequested,
-                    loggerFactory,
-                    console,
-                    worker)
+                    logger,
+                    console)
                 .ConfigureAwait(false);
 
             logger.LogInformation(
@@ -223,47 +200,6 @@ internal static class Application {
 
             return 1;
         }
-    }
-
-    private static async Task<int> RunInProcessAsync(
-        string command,
-        CommandOptions options,
-        bool verbose,
-        ILoggerFactory loggerFactory,
-        ConsoleRenderer console,
-        ToolkitWorkerInvocation worker) {
-        var request = ToolkitRequestFactory.Create(
-            command,
-            options,
-            verbose);
-        var executor = new ToolkitExecutor(
-            loggerFactory,
-            worker.Limits);
-        using var printer = worker.IsWorker
-            ? null
-            : new ToolkitEventPrinter(console);
-        var result = await executor.ExecuteAsync(
-                request,
-                async value => {
-                    if (worker.IsWorker) {
-                        await Console.Out.WriteLineAsync(
-                                ToolkitWorkerEvent.Encode(value))
-                            .ConfigureAwait(false);
-                    } else if (printer is not null) {
-                        printer.Write(value);
-                    } else if (value.Source == "stderr") {
-                        await Console.Error.WriteLineAsync(
-                                value.Message)
-                            .ConfigureAwait(false);
-                    } else {
-                        await Console.Out.WriteLineAsync(
-                                value.Message)
-                            .ConfigureAwait(false);
-                    }
-                },
-                CancellationToken.None)
-            .ConfigureAwait(false);
-        return result.ExitCode;
     }
 
     private static async Task RunServerAsync(
@@ -321,7 +257,6 @@ internal static class Application {
                         : TimeSpan.FromSeconds(idleSeconds),
                     OnListening = stateStore.WriteCurrentProcess
                 },
-                new ToolkitProcessExecutor(limits),
                 loggerFactory,
                 loggerFactory.CreateLogger<ToolkitHost>());
             logger.LogInformation(
@@ -368,10 +303,8 @@ internal static class Application {
     private static ToolkitTransferLimits CreateTransferLimits(
         CommandOptions options) {
         return new ToolkitTransferLimits {
-            MaximumAttachmentBytes = ToBytes(
-                options.ServerMaxAttachmentMiB ?? 4096),
-            MaximumRequestBytes = ToBytes(
-                options.ServerMaxRequestMiB ?? 8192)
+            MaximumBlobBytes = ToBytes(
+                options.ServerMaxBlobMiB ?? 32 * 1024)
         };
     }
 

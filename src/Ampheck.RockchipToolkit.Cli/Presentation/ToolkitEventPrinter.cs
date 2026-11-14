@@ -1,16 +1,15 @@
-using Ampheck.RockchipToolkit.Rpc;
+using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Presentation;
 
-internal sealed class ToolkitEventPrinter(
-    ConsoleRenderer console) : IDisposable {
+internal sealed class ToolkitEventPrinter(ConsoleRenderer console) : IDisposable {
     private ProgressBar? _progress;
     private string? _progressLabel;
     private long _progressTotal;
     private string? _activity;
 
-    public void Write(ToolkitEvent value) {
-        if (value.Source == "progress" &&
+    public void Write(TaskEventNotification value) {
+        if (value.Kind == "progress" &&
             value.Current is { } current &&
             value.Total is { } total) {
             if (_activity is not null) {
@@ -25,7 +24,7 @@ internal sealed class ToolkitEventPrinter(
             return;
         }
 
-        if (value.Source == "status") {
+        if (value.Kind == "status") {
             if (_activity is not null) {
                 console.CompleteActivity(
                     console.IsInteractive
@@ -38,7 +37,7 @@ internal sealed class ToolkitEventPrinter(
             return;
         }
 
-        if (value.Source == "success") {
+        if (value.Kind == "success") {
             console.CompleteActivity();
             _activity = null;
             console.WriteStatus(
@@ -50,13 +49,13 @@ internal sealed class ToolkitEventPrinter(
         if (_activity is not null) {
             console.CompleteActivity(
                 console.IsInteractive &&
-                value.Source != "stderr"
+                value.Kind != "stderr"
                     ? _activity
                     : null);
             _activity = null;
         }
 
-        if (value.Source == "stderr") {
+        if (value.Kind == "stderr") {
             Console.Error.WriteLine(value.Message);
         } else {
             Console.WriteLine(value.Message);

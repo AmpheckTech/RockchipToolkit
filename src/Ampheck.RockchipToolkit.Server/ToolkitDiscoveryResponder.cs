@@ -179,7 +179,9 @@ internal sealed class ToolkitDiscoveryResponder : IAsyncDisposable {
                 $"proto={ToolkitProtocolVersion.Major}." +
                 $"{ToolkitProtocolVersion.Minor}"),
             MdnsPacketCodec.ToTxtBytes(
-                $"caps={string.Join(",", ToolkitCapabilities.All)}"),
+                "rpc=/api/rpc"),
+            MdnsPacketCodec.ToTxtBytes(
+                "blobs=/api/blobs"),
             MdnsPacketCodec.ToTxtBytes(
                 $"guid={_options.InstanceId}"),
             MdnsPacketCodec.ToTxtBytes(

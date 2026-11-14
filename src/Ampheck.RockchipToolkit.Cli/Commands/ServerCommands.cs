@@ -36,15 +36,10 @@ internal static class ServerCommands {
         var verbose = new Option<bool>("--verbose", "-v") {
             Description = "Enable informational and debug logs."
         };
-        var maxAttachment = new Option<int>(
-            "--max-attachment-mib") {
-            Description = "Maximum compressed MiB per attachment.",
-            DefaultValueFactory = _ => 4096
-        };
-        var maxRequest = new Option<int>(
-            "--max-request-mib") {
-            Description = "Maximum compressed MiB per request.",
-            DefaultValueFactory = _ => 8192
+        var maxBlob = new Option<int>(
+            "--max-blob-mib") {
+            Description = "Maximum MiB per uploaded blob.",
+            DefaultValueFactory = _ => 32 * 1024
         };
         var serialHistory = new Option<int>(
             "--serial-history-kib") {
@@ -56,8 +51,7 @@ internal static class ServerCommands {
         nodaemon.Add(hostName);
         nodaemon.Add(idleTimeout);
         nodaemon.Add(verbose);
-        nodaemon.Add(maxAttachment);
-        nodaemon.Add(maxRequest);
+        nodaemon.Add(maxBlob);
         nodaemon.Add(serialHistory);
         nodaemon.SetAction(parsed => {
             state.Command = CommandNames.ServerNodaemon;
@@ -67,10 +61,8 @@ internal static class ServerCommands {
                 parsed.GetValue(hostName);
             state.Options.ServerIdleSeconds =
                 parsed.GetValue(idleTimeout);
-            state.Options.ServerMaxAttachmentMiB =
-                parsed.GetValue(maxAttachment);
-            state.Options.ServerMaxRequestMiB =
-                parsed.GetValue(maxRequest);
+            state.Options.ServerMaxBlobMiB =
+                parsed.GetValue(maxBlob);
             state.Options.ServerSerialHistoryKiB =
                 parsed.GetValue(serialHistory);
             return 0;

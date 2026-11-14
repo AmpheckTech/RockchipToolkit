@@ -1,7 +1,12 @@
 namespace Ampheck.RockchipToolkit.Rpc;
 
-public sealed record ToolkitEndpoint(string Host, int Port, string Path = "/arkt") {
+public sealed record ToolkitEndpoint(
+    string Host,
+    int Port,
+    string Path = "/api/rpc") {
     public Uri Uri => new UriBuilder("ws", Host, Port, Path).Uri;
+    public Uri HttpUri(string path) =>
+        new UriBuilder("http", Host, Port, path).Uri;
     public string HostPort =>
         Host.Contains(':')
             ? $"[{Host}]:{Port}"
@@ -11,8 +16,8 @@ public sealed record ToolkitEndpoint(string Host, int Port, string Path = "/arkt
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (!value.Contains("://", StringComparison.Ordinal)) {
             value = value.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase)
-                ? $"ws://{value["tcp:".Length..]}/arkt"
-                : $"ws://{value}/arkt";
+                ? $"ws://{value["tcp:".Length..]}/api/rpc"
+                : $"ws://{value}/api/rpc";
         }
 
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
@@ -25,7 +30,9 @@ public sealed record ToolkitEndpoint(string Host, int Port, string Path = "/arkt
         return new ToolkitEndpoint(
             uri.Host,
             uri.Port,
-            string.IsNullOrWhiteSpace(uri.AbsolutePath) ? "/arkt" : uri.AbsolutePath);
+            string.IsNullOrWhiteSpace(uri.AbsolutePath)
+                ? "/api/rpc"
+                : uri.AbsolutePath);
     }
 
     public override string ToString() => HostPort;

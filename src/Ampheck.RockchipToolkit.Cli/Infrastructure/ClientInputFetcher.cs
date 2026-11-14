@@ -4,9 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Infrastructure;
 
-internal sealed class ClientInputFetcher(
-    ILogger logger,
-    ConsoleRenderer console) {
+internal sealed class ClientInputFetcher(ILogger logger, ConsoleRenderer console) {
     private const int BufferSize = 128 * 1024;
 
     public async Task<string> DownloadAsync(

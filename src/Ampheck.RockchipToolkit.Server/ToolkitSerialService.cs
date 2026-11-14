@@ -1,4 +1,5 @@
 using Ampheck.RockchipToolkit.Rpc;
+using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Transport.Serial;
 using Microsoft.Extensions.Logging;
 
@@ -7,6 +8,7 @@ namespace Ampheck.RockchipToolkit.Server;
 public sealed class ToolkitSerialService(
     ILoggerFactory loggerFactory,
     int historyBytes = 256 * 1024) : IAsyncDisposable {
+
     private readonly SerialHubManager _manager =
         new(loggerFactory);
 
@@ -14,7 +16,7 @@ public sealed class ToolkitSerialService(
         _manager.ListDevices();
 
     public async Task OpenPortAsync(
-        ToolkitRequest request) {
+        SerialOpenParams request) {
         await using var session = await _manager.OpenSessionAsync(
                 ToOptions(request),
                 historyBytes)
@@ -25,34 +27,58 @@ public sealed class ToolkitSerialService(
     }
 
     public ValueTask<SerialSession> AttachAsync(
-        ToolkitRequest request) {
-        if (string.IsNullOrWhiteSpace(request.SerialPort)) {
+        string? portName) {
+        if (string.IsNullOrWhiteSpace(portName)) {
             throw new InvalidDataException(
                 "The request contains no serial port name.");
         }
 
         return _manager.OpenExistingSessionAsync(
-            request.SerialPort);
+            portName);
     }
 
-    public byte[] GetHistory(ToolkitRequest request) {
-        var maximum = request.SerialHistoryBytes ??
-            historyBytes;
+    public byte[] GetHistory(SerialHistoryParams request) {
+        var maximum = request.MaximumBytes > 0
+            ? request.MaximumBytes
+            : historyBytes;
         if (maximum <= 0) {
             throw new InvalidDataException(
                 "The serial history size must be positive.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.SerialPort) ||
+        if (string.IsNullOrWhiteSpace(request.PortName) ||
             !_manager.TryGetHistory(
-                request.SerialPort,
+                request.PortName,
                 maximum,
                 out var history)) {
             throw new InvalidOperationException(
-                $"Serial port '{request.SerialPort}' is not open.");
+                $"Serial port '{request.PortName}' is not open.");
         }
 
         return history.ToArray();
+    }
+
+    public void ClearHistory(SerialPortParams request) {
+        if (string.IsNullOrWhiteSpace(request.PortName)) {
+            throw new InvalidDataException(
+                "The request contains no serial port name.");
+        }
+
+        if (!_manager.TryClearHistory(request.PortName)) {
+            throw new InvalidOperationException(
+                $"Serial port '{request.PortName}' is not open.");
+        }
+    }
+
+    public void EnsureOpen(string portName) {
+        if (string.IsNullOrWhiteSpace(portName) ||
+            !_manager.TryGetHistory(
+                portName,
+                1,
+                out _)) {
+            throw new InvalidOperationException(
+                $"Serial port '{portName}' is not open.");
+        }
     }
 
     public ValueTask<bool> CloseAsync(
@@ -69,18 +95,20 @@ public sealed class ToolkitSerialService(
         _manager.DisposeAsync();
 
     private static SerialPortOptions ToOptions(
-        ToolkitRequest request) {
-        if (string.IsNullOrWhiteSpace(request.SerialPort)) {
+        SerialOpenParams request) {
+        if (string.IsNullOrWhiteSpace(request.PortName)) {
             throw new InvalidDataException(
                 "The request contains no serial port name.");
         }
 
+        var baudRate = request.Settings.BaudRate > 0
+            ? request.Settings.BaudRate
+            : SerialPortDefaults.BaudRate;
         return new SerialPortOptions {
-            PortName = request.SerialPort,
-            BaudRate = request.BaudRate ??
-                SerialPortDefaults.BaudRate,
-            DataBits = request.SerialDataBits ?? 8,
-            Parity = request.SerialParity switch {
+            PortName = request.PortName,
+            BaudRate = baudRate,
+            DataBits = request.Settings.DataBits,
+            Parity = request.Settings.Parity switch {
                 ToolkitSerialParity.Odd =>
                     SerialParity.Odd,
                 ToolkitSerialParity.Even =>
@@ -91,14 +119,14 @@ public sealed class ToolkitSerialService(
                     SerialParity.Space,
                 _ => SerialParity.None
             },
-            StopBits = request.SerialStopBits switch {
+            StopBits = request.Settings.StopBits switch {
                 ToolkitSerialStopBits.OnePointFive =>
                     SerialStopBits.OnePointFive,
                 ToolkitSerialStopBits.Two =>
                     SerialStopBits.Two,
                 _ => SerialStopBits.One
             },
-            Handshake = request.SerialHandshake switch {
+            Handshake = request.Settings.Handshake switch {
                 ToolkitSerialHandshake.XOnXOff =>
                     SerialHandshake.XOnXOff,
                 ToolkitSerialHandshake.RequestToSend =>
@@ -107,8 +135,8 @@ public sealed class ToolkitSerialService(
                     SerialHandshake.RequestToSendXOnXOff,
                 _ => SerialHandshake.None
             },
-            DtrEnable = request.SerialDtrEnable,
-            RtsEnable = request.SerialRtsEnable
+            DtrEnable = request.Settings.DtrEnable,
+            RtsEnable = request.Settings.RtsEnable
         };
     }
 }

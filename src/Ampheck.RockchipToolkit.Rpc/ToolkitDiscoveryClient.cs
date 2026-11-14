@@ -126,7 +126,12 @@ public static class ToolkitDiscoveryClient {
                 var values = ParseTxt(txt.Text);
                 if (!values.TryGetValue("guid", out var guid) ||
                     !values.TryGetValue("hostname", out var hostName) ||
-                    !values.TryGetValue("auth", out var auth)) {
+                    !values.TryGetValue("auth", out var auth) ||
+                    !values.TryGetValue("proto", out var protocol) ||
+                    !protocol.Equals(
+                        $"{ToolkitProtocolVersion.Major}." +
+                        $"{ToolkitProtocolVersion.Minor}",
+                        StringComparison.Ordinal)) {
                     continue;
                 }
                 var address = records

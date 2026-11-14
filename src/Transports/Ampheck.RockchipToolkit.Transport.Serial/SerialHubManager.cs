@@ -104,6 +104,21 @@ public sealed class SerialHubManager : IAsyncDisposable {
         return false;
     }
 
+    public bool TryClearHistory(string portName) {
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposed) != 0,
+            this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(portName);
+        lock (_sync) {
+            if (_hubs.TryGetValue(portName, out var hub)) {
+                hub.ClearHistory();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public async ValueTask<bool> CloseAsync(string portName) {
         ObjectDisposedException.ThrowIf(
             Volatile.Read(ref _disposed) != 0,

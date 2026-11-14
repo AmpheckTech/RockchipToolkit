@@ -6,7 +6,7 @@ namespace Ampheck.RockchipToolkit.Rpc;
 public static class ToolkitBroadcastDiscovery {
     public const int Port = 5071;
     private static ReadOnlySpan<byte> Magic => "ARKD"u8;
-    private const byte Version = 1;
+    private const byte Version = 2;
     private const byte RequestType = 1;
     private const byte ResponseType = 2;
 

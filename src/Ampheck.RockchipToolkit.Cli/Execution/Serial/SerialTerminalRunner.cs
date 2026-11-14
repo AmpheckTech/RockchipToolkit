@@ -15,9 +15,10 @@ internal static class SerialTerminalRunner {
         Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> write,
         Task completion,
         ConsoleRenderer console,
-        CancellationToken cancellationToken = default) {
+        CancellationToken cancellationToken = default,
+        string status = "Interactive serial terminal. Use Ctrl+] to leave.") {
         console.WriteStatus(
-            "Interactive serial terminal. Use Ctrl+] to leave.");
+            status);
         var interactive = ConsoleInput.IsInteractiveConsole;
         if (!interactive) {
             await PumpStandardInputAsync(
