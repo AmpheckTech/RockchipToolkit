@@ -6,5 +6,6 @@ public sealed record RockchipUpdateEntry(
     string FileName,
     long Offset,
     uint FlashOffset,
-    uint UseSpace,
-    uint Size);
+    uint FlashSize,
+    uint PaddedSize,
+    long Size);

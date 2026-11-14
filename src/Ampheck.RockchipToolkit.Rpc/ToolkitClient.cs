@@ -104,7 +104,10 @@ public sealed class ToolkitClient(ToolkitEndpoint endpoint, string? token = null
                         null,
                         timeout.Token)
                     .ConfigureAwait(false);
-            } catch (Exception error) when (error is WebSocketException or ObjectDisposedException or OperationCanceledException) {
+            } catch (Exception error) when (
+                error is WebSocketException or
+                ObjectDisposedException or
+                OperationCanceledException) {
             }
         }
 
@@ -113,7 +116,10 @@ public sealed class ToolkitClient(ToolkitEndpoint endpoint, string? token = null
         if (_receiveTask is not null) {
             try {
                 await _receiveTask.ConfigureAwait(false);
-            } catch (Exception error) when (error is OperationCanceledException or WebSocketException or ObjectDisposedException) {
+            } catch (Exception error) when (
+                error is OperationCanceledException or
+                WebSocketException or
+                ObjectDisposedException) {
             }
         }
 
@@ -282,7 +288,12 @@ public sealed class ToolkitClient(ToolkitEndpoint endpoint, string? token = null
                     throw new InvalidDataException("The attachment exceeded its declared size.");
                 }
 
-                await SendAsync(ToolkitWireCodec.Data(channelId, requestId, buffer.AsMemory(0, read)), cancellationToken)
+                await SendAsync(
+                        ToolkitWireCodec.Data(
+                            channelId,
+                            requestId,
+                            buffer.AsMemory(0, read)),
+                        cancellationToken)
                     .ConfigureAwait(false);
                 onTransferEvent?.Invoke(new ToolkitEvent(
                     "progress",

@@ -5,6 +5,12 @@ using Ampheck.RockchipToolkit.Cli.Presentation;
 namespace Ampheck.RockchipToolkit.Cli.Execution.Serial;
 
 internal static class SerialTerminalRunner {
+    // Opening the standard-output stream duplicates the native descriptor on
+    // Unix. Serial data can arrive in thousands of chunks, so keep one stream
+    // alive for the process instead of leaking descriptors per write.
+    private static readonly Stream StandardOutput =
+        Console.OpenStandardOutput();
+
     public static async Task RunAsync(
         Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> write,
         Task completion,
@@ -83,9 +89,13 @@ internal static class SerialTerminalRunner {
     public static ValueTask WriteOutputAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default) {
-        return Console.OpenStandardOutput().WriteAsync(
+        return StandardOutput.WriteAsync(
             data,
             cancellationToken);
+    }
+
+    public static void WriteOutput(ReadOnlySpan<byte> data) {
+        StandardOutput.Write(data);
     }
 
     private static async Task PumpConsoleKeysAsync(

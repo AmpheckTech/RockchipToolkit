@@ -2,10 +2,12 @@ using Ampheck.RockchipToolkit.Transport;
 
 namespace Ampheck.RockchipToolkit.Protocol;
 
+/// <summary>Transfers Rockchip MaskROM BOOT entries over USB control requests.</summary>
 internal static class RockUsbBootTransfer {
-    private const int ControlBlockSize = 4096;
+    private const int ControlBlockSize = 4096; // MaskROM control-transfer chunk.
+    // bmRequestType 0x40: host-to-device, vendor, device recipient.
     private const byte VendorOutRequestType = 0x40;
-    private const byte VendorRequest = 0x0C;
+    private const byte VendorRequest = 0x0C; // bRequest for BOOT data.
 
     public static async ValueTask TransferAsync(
         IUsbTransport transport,
@@ -32,6 +34,7 @@ internal static class RockUsbBootTransfer {
         var crc = CalculateCrc(data.Span, payloadLength);
         var request = new byte[checked(payloadLength + 2)];
         data.CopyTo(request);
+        // CRC-16/CCITT follows the padded payload in big-endian order.
         BinaryCodec.U16BigEndian(request, payloadLength, crc);
 
         await SendChunksAsync(
@@ -98,6 +101,7 @@ internal static class RockUsbBootTransfer {
         }
     }
 
+    // CRC-16/CCITT-FALSE: initial value 0xFFFF, polynomial 0x1021.
     private static ushort CalculateCrc(
         ReadOnlySpan<byte> data,
         int paddedLength) {

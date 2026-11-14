@@ -1,8 +1,8 @@
-using Ampheck.RockchipToolkit.LibUsb.Device;
-using Ampheck.RockchipToolkit.RockUsb.Configuration;
-using Ampheck.RockchipToolkit.RockUsb.Device;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Transport;
+using Ampheck.RockchipToolkit.Transport.LibUsb.Device;
+using Ampheck.RockchipToolkit.Transport.RockUsb.Configuration;
+using Ampheck.RockchipToolkit.Transport.RockUsb.Device;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Devices;

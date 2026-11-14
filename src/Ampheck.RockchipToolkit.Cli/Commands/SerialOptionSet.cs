@@ -1,6 +1,6 @@
 using System.CommandLine;
 using Ampheck.RockchipToolkit.Rpc;
-using Ampheck.Serial;
+using Ampheck.RockchipToolkit.Transport.Serial;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 

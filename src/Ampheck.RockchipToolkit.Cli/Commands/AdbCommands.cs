@@ -6,7 +6,7 @@ internal static class AdbCommands {
     public static Command Create(CommandParseState state) {
         var command = new Command(
             CommandNames.Adb,
-            "Access a device through its ADB USB interface.");
+            "Access devices through the official ADB server.");
         command.Add(CreateDevicesCommand(state));
         command.Add(CreateShellCommand(state));
         command.Add(CreateTransferCommand(
@@ -48,7 +48,8 @@ internal static class AdbCommands {
         CommandOptionsBinder.AddAdbOptions(
             rebootLoader,
             state,
-            CommandNames.AdbRebootLoader);
+            CommandNames.AdbRebootLoader,
+            includeLoaderFilters: true);
         reboot.Add(rebootNormal);
         reboot.Add(rebootRecovery);
         reboot.Add(rebootLoader);
@@ -60,7 +61,7 @@ internal static class AdbCommands {
         CommandParseState state) {
         var command = new Command(
             "devices",
-            "List ADB USB devices.");
+            "List devices known to the official ADB server.");
         CommandOptionsBinder.AddAdbOptions(
             command,
             state,

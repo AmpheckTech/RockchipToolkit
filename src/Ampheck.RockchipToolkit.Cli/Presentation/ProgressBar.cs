@@ -6,12 +6,17 @@ namespace Ampheck.RockchipToolkit.Cli.Presentation;
 internal sealed class ProgressBar : IProgress<long>, IDisposable {
     private static readonly TimeSpan RefreshInterval =
         TimeSpan.FromMilliseconds(100);
+    private const double SpeedWindowSeconds = 1;
 
     private readonly ConsoleRenderer _renderer;
     private readonly string _label;
-    private readonly long _total;
+    private long _total;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+    private long _value;
+    private long _lastSpeedValue;
     private TimeSpan _lastRefresh;
+    private TimeSpan _lastSpeedRefresh;
+    private double _speed;
     private bool _completed;
     private bool _disposed;
 
@@ -26,15 +31,15 @@ internal sealed class ProgressBar : IProgress<long>, IDisposable {
     }
 
     public void Report(long value) {
+        _value = Math.Clamp(value, 0, _total);
         if (_disposed || !_renderer.IsInteractive) {
             return;
         }
 
-        value = Math.Clamp(value, 0, _total);
         var now = _stopwatch.Elapsed;
-        var finished = value >= _total;
-        if (finished) {
-            _completed = true;
+        UpdateSpeed(now);
+        _completed = _value >= _total;
+        if (_completed) {
             return;
         }
 
@@ -43,7 +48,14 @@ internal sealed class ProgressBar : IProgress<long>, IDisposable {
         }
 
         _lastRefresh = now;
-        _renderer.SetProgress(BuildLine(value));
+        _renderer.SetProgress(BuildLine(_value));
+    }
+
+    public void UpdateTotal(long total) {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(total);
+        _total = total;
+        _lastRefresh = TimeSpan.Zero;
+        Report(_value);
     }
 
     public void Dispose() {
@@ -80,11 +92,6 @@ internal sealed class ProgressBar : IProgress<long>, IDisposable {
             0,
             barWidth);
         var empty = barWidth - filled;
-        var elapsed = _stopwatch.Elapsed.TotalSeconds;
-        var speed = elapsed > 0
-            ? (long)(value / elapsed)
-            : 0;
-
         if (!_renderer.IsInteractive) {
             return string.Empty;
         }
@@ -95,7 +102,30 @@ internal sealed class ProgressBar : IProgress<long>, IDisposable {
             new string('-', empty) +
             $"| {percent,3}% " +
             $"{FormatBytes(value),8}/{FormatBytes(_total),8} " +
-            $"{FormatBytes(speed),7}/s";
+            $"{FormatBytes((long)_speed),7}/s";
+    }
+
+    private void UpdateSpeed(TimeSpan now) {
+        var elapsed =
+            (now - _lastSpeedRefresh).TotalSeconds;
+        var delta = _value - _lastSpeedValue;
+        if (delta < 0) {
+            _speed = 0;
+        } else if (elapsed > 0 && delta > 0) {
+            var current = delta / elapsed;
+            if (_speed <= 0) {
+                _speed = current;
+            } else {
+                var weight = Math.Clamp(
+                    elapsed / SpeedWindowSeconds,
+                    0,
+                    1);
+                _speed += (current - _speed) * weight;
+            }
+        }
+
+        _lastSpeedValue = _value;
+        _lastSpeedRefresh = now;
     }
 
     private static string Truncate(

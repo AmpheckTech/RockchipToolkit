@@ -10,6 +10,7 @@ public sealed class RockchipDevice : IAsyncDisposable {
     private const int MaxTransferSectors = 128;
     private const int MaxTransferBytes =
         MaxTransferSectors * RockUsbProtocol.SectorSize;
+    private const int EraseProgressReports = 100;
     private readonly IUsbTransport _transport;
     private readonly ILogger<RockchipDevice> _logger;
     private bool _disposed;
@@ -99,9 +100,20 @@ public sealed class RockchipDevice : IAsyncDisposable {
         _logger.LogTrace("Write completed");
     }
 
+    public ValueTask EraseAsync(
+        uint sector,
+        uint count,
+        CancellationToken cancellationToken = default) =>
+        EraseAsync(
+                sector,
+                count,
+                progress: null,
+                cancellationToken);
+
     public async ValueTask EraseAsync(
         uint sector,
         uint count,
+        Func<long, long, ValueTask>? progress,
         CancellationToken cancellationToken = default) {
         if (count == 0) {
             throw new ArgumentOutOfRangeException(
@@ -115,6 +127,13 @@ public sealed class RockchipDevice : IAsyncDisposable {
             count,
             sector);
         var remaining = count;
+        var erased = 0u;
+        var reportInterval = Math.Max(
+            1u,
+            count / EraseProgressReports);
+        var nextReport = reportInterval;
+        var totalBytes = checked(
+            (long)count * RockUsbProtocol.SectorSize);
         while (remaining > 0) {
             var chunk = (ushort)Math.Min(
                 remaining,
@@ -126,6 +145,20 @@ public sealed class RockchipDevice : IAsyncDisposable {
                 .ConfigureAwait(false);
             sector = checked(sector + chunk);
             remaining -= chunk;
+            erased += chunk;
+            if (progress is not null &&
+                (remaining == 0 || erased >= nextReport)) {
+                await progress(
+                        checked(
+                            (long)erased *
+                            RockUsbProtocol.SectorSize),
+                        totalBytes)
+                    .ConfigureAwait(false);
+                if (remaining > 0) {
+                    nextReport = checked(
+                        erased + reportInterval);
+                }
+            }
         }
     }
 
@@ -176,7 +209,7 @@ public sealed class RockchipDevice : IAsyncDisposable {
             cancellationToken);
     }
 
-    /// <summary>Loads 471/472 BOOT entries into a MaskROM device.</summary>
+    /// <summary>Loads a Rockchip boot image into a MaskROM device.</summary>
     public ValueTask DownloadBootAsync(
         string loaderPath,
         CancellationToken cancellationToken = default) {

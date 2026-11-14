@@ -16,8 +16,11 @@ internal static class FirmwareWriter {
         ILogger logger,
         Func<string, ValueTask>? report = null,
         Func<long, long, ValueTask>? progress = null,
+        Func<long, long, ValueTask>? eraseProgress = null,
         long? length = null,
-        long? sourceOffset = null) {
+        long? sourceOffset = null,
+        CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
         EnsureBackupDoesNotOverwriteSource(path, backupPath);
         await using var input = new FileStream(
             path,
@@ -36,8 +39,10 @@ internal static class FirmwareWriter {
                 logger,
                 report,
                 progress,
+                eraseProgress,
                 length,
-                sourceOffset)
+                sourceOffset,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -51,8 +56,11 @@ internal static class FirmwareWriter {
         ILogger logger,
         Func<string, ValueTask>? report = null,
         Func<long, long, ValueTask>? progress = null,
+        Func<long, long, ValueTask>? eraseProgress = null,
         long? length = null,
-        long? sourceOffset = null) {
+        long? sourceOffset = null,
+        CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!input.CanRead || !input.CanSeek) {
             throw new ArgumentException(
                 "The input stream must be readable and seekable.",
@@ -86,7 +94,8 @@ internal static class FirmwareWriter {
                     sector,
                     writeLength,
                     backupPath,
-                    logger)
+                    logger,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -99,7 +108,11 @@ internal static class FirmwareWriter {
                     $"Erasing {sectorCount:N0} sectors at " +
                     $"0x{sector:X8}")
                 .ConfigureAwait(false);
-            await device.EraseAsync(sector, sectorCount)
+            await device.EraseAsync(
+                    sector,
+                    sectorCount,
+                    eraseProgress,
+                    cancellationToken)
                 .ConfigureAwait(false);
             logger.LogInformation(
                 "Erased {SectorCount} sector(s) before writing",
@@ -120,15 +133,18 @@ internal static class FirmwareWriter {
         var buffer = new byte[IoBufferSize];
         long totalRead = 0;
         while (totalRead < writeLength) {
+            cancellationToken.ThrowIfCancellationRequested();
             var wanted = (int)Math.Min(
                 buffer.Length,
                 writeLength - totalRead);
             await input.ReadExactlyAsync(
-                    buffer.AsMemory(0, wanted))
+                    buffer.AsMemory(0, wanted),
+                    cancellationToken)
                 .ConfigureAwait(false);
             await device.WriteAsync(
                     sector,
-                    buffer.AsMemory(0, wanted))
+                    buffer.AsMemory(0, wanted),
+                    cancellationToken)
                 .ConfigureAwait(false);
             totalRead += wanted;
             if (progress is not null) {
@@ -156,7 +172,9 @@ internal static class FirmwareWriter {
         uint sector,
         long length,
         string backupPath,
-        ILogger logger) {
+        ILogger logger,
+        CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
         await using var backup = new FileStream(
             backupPath,
             FileMode.Create,
@@ -166,20 +184,23 @@ internal static class FirmwareWriter {
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         var remaining = length;
         while (remaining > 0) {
+            cancellationToken.ThrowIfCancellationRequested();
             var sectorCount = (ushort)Math.Min(
                 remaining / RockUsbProtocol.SectorSize,
                 IoBufferSize /
                     RockUsbProtocol.SectorSize);
             var data = await device.ReadAsync(
                     sector,
-                    sectorCount)
+                    sectorCount,
+                    cancellationToken)
                 .ConfigureAwait(false);
-            await backup.WriteAsync(data).ConfigureAwait(false);
+            await backup.WriteAsync(data, cancellationToken)
+                .ConfigureAwait(false);
             sector = checked(sector + sectorCount);
             remaining -= data.Length;
         }
 
-        await backup.FlushAsync().ConfigureAwait(false);
+        await backup.FlushAsync(cancellationToken).ConfigureAwait(false);
         logger.LogInformation(
             "Backed up {ByteCount} bytes to {BackupPath}",
             length,

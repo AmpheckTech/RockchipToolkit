@@ -91,19 +91,6 @@ jobs:
           -p:Version="$VERSION"
           -o dist/arkt/${{ matrix.rid }}
 
-      - name: Publish adbcli
-        shell: bash
-        run: >
-          dotnet publish
-          src/Ampheck.Adb.Cli/Ampheck.Adb.Cli.csproj
-          -c Release
-          -r ${{ matrix.rid }}
-          --self-contained true
-          --no-restore
-          -p:PublishAot=true
-          -p:Version="$VERSION"
-          -o dist/adbcli/${{ matrix.rid }}
-
       - name: Prepare Linux binaries
         if: runner.os == 'Linux'
         shell: bash
@@ -112,9 +99,6 @@ jobs:
           install -m 755 \
             "dist/arkt/${{ matrix.rid }}/arkt" \
             "release/arkt-v${VERSION}-${{ matrix.rid }}"
-          install -m 755 \
-            "dist/adbcli/${{ matrix.rid }}/adbcli" \
-            "release/adbcli-v${VERSION}-${{ matrix.rid }}"
 
       - name: Prepare Windows binaries
         if: runner.os == 'Windows'
@@ -124,9 +108,6 @@ jobs:
           Copy-Item `
             "dist/arkt/${{ matrix.rid }}/arkt.exe" `
             "release/arkt-v$env:VERSION-${{ matrix.rid }}.exe"
-          Copy-Item `
-            "dist/adbcli/${{ matrix.rid }}/adbcli.exe" `
-            "release/adbcli-v$env:VERSION-${{ matrix.rid }}.exe"
 
       - name: Upload release binaries
         uses: actions/upload-artifact@v4

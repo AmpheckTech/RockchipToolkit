@@ -6,12 +6,12 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Ampheck.Adb.Server/Ampheck.Adb.Server.csproj" />
+    <ProjectReference Include="../Ampheck.Adb/Ampheck.Adb.csproj" />
     <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
-    <ProjectReference Include="../Ampheck.RockchipToolkit.LibUsb/Ampheck.RockchipToolkit.LibUsb.csproj" />
-    <ProjectReference Include="../Ampheck.RockchipToolkit.RockUsb/Ampheck.RockchipToolkit.RockUsb.csproj" />
+    <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.LibUsb/Ampheck.RockchipToolkit.Transport.LibUsb.csproj" />
+    <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.RockUsb/Ampheck.RockchipToolkit.Transport.RockUsb.csproj" />
     <ProjectReference Include="../Ampheck.RockchipToolkit.Rpc/Ampheck.RockchipToolkit.Rpc.csproj" />
-    <ProjectReference Include="../Ampheck.Serial/Ampheck.Serial.csproj" />
+    <ProjectReference Include="../Transports/Ampheck.RockchipToolkit.Transport.Serial/Ampheck.RockchipToolkit.Transport.Serial.csproj" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
   </ItemGroup>

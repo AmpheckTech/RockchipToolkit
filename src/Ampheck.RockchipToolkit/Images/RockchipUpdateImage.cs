@@ -1,6 +1,6 @@
 namespace Ampheck.RockchipToolkit.Images;
 
-/// <summary>Reads packaged partition images from a Rockchip RKFW update.img.</summary>
+/// <summary>Reads packaged partition images from an RKFW or RKAF update image.</summary>
 public sealed class RockchipUpdateImage : IDisposable {
     private readonly FileStream _stream;
     private readonly object _streamLock = new();
@@ -8,22 +8,28 @@ public sealed class RockchipUpdateImage : IDisposable {
 
     private RockchipUpdateImage(
         FileStream stream,
-        RockchipImageHeader containerHeader,
+        RockchipUpdateImageKind kind,
+        RockchipImageHeader? containerHeader,
         uint version,
         string machineModel,
+        string machineId,
         string manufacturer,
         IReadOnlyList<RockchipUpdateEntry> entries) {
         _stream = stream;
+        Kind = kind;
         ContainerHeader = containerHeader;
         Version = version;
         MachineModel = machineModel;
+        MachineId = machineId;
         Manufacturer = manufacturer;
         Entries = entries;
     }
 
-    public RockchipImageHeader ContainerHeader { get; }
+    public RockchipUpdateImageKind Kind { get; }
+    public RockchipImageHeader? ContainerHeader { get; }
     public uint Version { get; }
     public string MachineModel { get; }
+    public string MachineId { get; }
     public string Manufacturer { get; }
     public IReadOnlyList<RockchipUpdateEntry> Entries { get; }
 
@@ -39,9 +45,11 @@ public sealed class RockchipUpdateImage : IDisposable {
             var update = RockchipUpdateImageReader.Read(stream);
             return new RockchipUpdateImage(
                 stream,
+                update.Kind,
                 update.ContainerHeader,
                 update.Version,
                 update.MachineModel,
+                update.MachineId,
                 update.Manufacturer,
                 update.Entries);
         } catch {
@@ -66,6 +74,13 @@ public sealed class RockchipUpdateImage : IDisposable {
         using var stream = OpenEntryStream(entry);
         StreamRange.ReadExactly(stream, data);
         return data;
+    }
+
+    public byte[] ReadParameterBytes(RockchipUpdateEntry entry) {
+        var data = ReadEntryBytes(entry);
+        return RockchipParm.TryUnwrap(data, out var content)
+            ? content.ToArray()
+            : data;
     }
 
     public Stream OpenEntryStream(RockchipUpdateEntry entry) {

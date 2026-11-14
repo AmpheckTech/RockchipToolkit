@@ -4,11 +4,17 @@ using System.Text;
 
 namespace Ampheck.RockchipToolkit.Rpc;
 
+/// <summary>Encodes and decodes the DNS wire format used by multicast DNS.</summary>
+/// <remarks>
+/// DNS headers, counts, resource-record fields, and compressed-name pointers
+/// follow RFC 1035 sections 4.1.1 and 4.1.4. Multicast DNS semantics and the
+/// cache-flush class bit follow RFC 6762. Every multi-byte field is big-endian.
+/// </remarks>
 internal static class MdnsPacketCodec {
-    private const int HeaderLength = 12;
-    private const ushort AuthoritativeResponse = 0x8400;
-    private const ushort InternetClass = 1;
-    private const ushort CacheFlushClass = 0x8001;
+    private const int HeaderLength = 12; // ID, flags, and four 16-bit counts.
+    private const ushort AuthoritativeResponse = 0x8400; // QR=1, AA=1.
+    private const ushort InternetClass = 1; // DNS CLASS IN.
+    private const ushort CacheFlushClass = 0x8001; // mDNS cache-flush | IN.
 
     public static byte[] EncodeQuery(string serviceType) {
         using var stream = new MemoryStream();
@@ -50,6 +56,8 @@ internal static class MdnsPacketCodec {
                 "The mDNS packet is too short.");
         }
 
+        // Header offsets: ID 0, flags 2, QDCOUNT 4, ANCOUNT 6,
+        // NSCOUNT 8, ARCOUNT 10. All counts are unsigned big-endian.
         var questionCount = BinaryPrimitives.ReadUInt16BigEndian(
             payload[4..]);
         var answerCount = BinaryPrimitives.ReadUInt16BigEndian(
@@ -163,6 +171,7 @@ internal static class MdnsPacketCodec {
         List<MdnsResourceRecord> destination) {
         var (name, next) = ReadName(payload, offset);
         offset = next;
+        // Fixed RR fields after NAME: TYPE 0, CLASS 2, TTL 4, RDLENGTH 8.
         RequireRemaining(payload, offset, 10);
         var type = (MdnsRecordType)
             BinaryPrimitives.ReadUInt16BigEndian(
@@ -177,24 +186,27 @@ internal static class MdnsPacketCodec {
         offset += 10;
         RequireRemaining(payload, offset, dataLength);
         var data = payload.Slice(offset, dataLength);
+        // Bit 15 is mDNS cache-flush; callers see only the DNS CLASS value.
+        var recordClassValue = (ushort)(recordClass & 0x7fff);
         switch (type) {
             case MdnsRecordType.Ptr:
                 var (targetName, _) = ReadName(payload, offset);
                 destination.Add(new MdnsResourceRecord(
                     name,
                     type,
-                    (ushort)(recordClass & 0x7fff),
+                    recordClassValue,
                     ttl,
                     TargetName: targetName));
                 break;
             case MdnsRecordType.Srv when dataLength >= 7:
+                // SRV RDATA: priority 0, weight 2, port 4, target at 6.
                 var port = BinaryPrimitives.ReadUInt16BigEndian(
                     data[4..]);
                 var (srvTarget, _) = ReadName(payload, offset + 6);
                 destination.Add(new MdnsResourceRecord(
                     name,
                     type,
-                    (ushort)(recordClass & 0x7fff),
+                    recordClassValue,
                     ttl,
                     TargetName: srvTarget,
                     Port: port));
@@ -217,7 +229,7 @@ internal static class MdnsPacketCodec {
                 destination.Add(new MdnsResourceRecord(
                     name,
                     type,
-                    (ushort)(recordClass & 0x7fff),
+                    recordClassValue,
                     ttl,
                     Text: values));
                 break;
@@ -225,7 +237,7 @@ internal static class MdnsPacketCodec {
                 destination.Add(new MdnsResourceRecord(
                     name,
                     type,
-                    (ushort)(recordClass & 0x7fff),
+                    recordClassValue,
                     ttl,
                     Address: new IPAddress(data)));
                 break;
@@ -237,6 +249,8 @@ internal static class MdnsPacketCodec {
     private static (string Name, int NextOffset) ReadName(
         ReadOnlySpan<byte> payload,
         int offset) {
+        // RFC 1035 compressed names use top bits 11 followed by a 14-bit
+        // pointer. Other top-bit patterns are unsupported label types.
         var labels = new List<string>();
         var nextOffset = offset;
         var jumped = false;
@@ -290,7 +304,7 @@ internal static class MdnsPacketCodec {
     private static void WriteRecord(
         Stream stream,
         MdnsResourceRecord record) {
-        WriteName(stream, record.Name);
+        WriteName(stream, record.Name); // NAME, then the fixed 10-byte RR tail.
         WriteUInt16(stream, (ushort)record.Type);
         WriteUInt16(stream, record.Class);
         WriteUInt32(stream, record.Ttl);
@@ -300,8 +314,8 @@ internal static class MdnsPacketCodec {
                 WriteName(data, record.TargetName!);
                 break;
             case MdnsRecordType.Srv:
-                WriteUInt16(data, 0);
-                WriteUInt16(data, 0);
+                WriteUInt16(data, 0); // Priority.
+                WriteUInt16(data, 0); // Weight.
                 WriteUInt16(data, record.Port);
                 WriteName(data, record.TargetName!);
                 break;
@@ -340,7 +354,7 @@ internal static class MdnsPacketCodec {
         ushort answers,
         ushort authorities,
         ushort additional) {
-        WriteUInt16(stream, 0);
+        WriteUInt16(stream, 0); // ID; mDNS uses zero for unsolicited traffic.
         WriteUInt16(stream, flags);
         WriteUInt16(stream, questions);
         WriteUInt16(stream, answers);

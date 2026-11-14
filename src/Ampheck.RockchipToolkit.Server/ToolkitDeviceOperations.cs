@@ -123,6 +123,11 @@ internal static class ToolkitDeviceOperations {
                 await device.EraseAsync(
                         request.Sector ?? 0,
                         request.Count ?? 1,
+                        (current, total) => ReportProgress(
+                            report,
+                            "erase",
+                            current,
+                            total),
                         cancellationToken)
                     .ConfigureAwait(false);
                 await ReportSuccessAsync(report, "Erase complete")
@@ -238,6 +243,11 @@ internal static class ToolkitDeviceOperations {
                     logger,
                     Report,
                     progress,
+                    (current, total) => ReportProgress(
+                        report,
+                        "erase",
+                        current,
+                        total),
                     limits,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -248,6 +258,11 @@ internal static class ToolkitDeviceOperations {
                     logger,
                     Report,
                     progress,
+                    (current, total) => ReportProgress(
+                        report,
+                        "erase",
+                        current,
+                        total),
                     limits,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -323,8 +338,14 @@ internal static class ToolkitDeviceOperations {
                 logger,
                 message => ReportStatusAsync(report, message),
                 progress,
+                (current, total) => ReportProgress(
+                    report,
+                    "erase",
+                    current,
+                    total),
                 request.WriteLength,
-                request.WriteSourceOffset)
+                request.WriteSourceOffset,
+                cancellationToken)
             .ConfigureAwait(false);
         await ReportSuccessAsync(report, "Write complete")
             .ConfigureAwait(false);

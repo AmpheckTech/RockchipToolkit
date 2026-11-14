@@ -2,6 +2,7 @@ using System.IO.Compression;
 using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
+using Ampheck.RockchipToolkit.Images;
 using Ampheck.RockchipToolkit.Rpc;
 using Microsoft.Extensions.Logging;
 
@@ -128,7 +129,8 @@ internal sealed class ToolkitAttachmentPlan : IAsyncDisposable {
             return;
         }
 
-        AddLocalSource(location);
+        await AddLocalSourceAsync(location, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask PrepareFileAsync(
@@ -189,16 +191,24 @@ internal sealed class ToolkitAttachmentPlan : IAsyncDisposable {
         };
     }
 
-    private void AddLocalSource(string location) {
+    private async ValueTask AddLocalSourceAsync(
+        string location,
+        CancellationToken cancellationToken) {
         if (Directory.Exists(location)) {
             var zip = Path.Combine(
                 Path.GetTempPath(),
                 $"ampheck-rpc-directory-{Guid.NewGuid():N}.zip");
-            ZipFile.CreateFromDirectory(
-                location,
-                zip,
-                CompressionLevel.Fastest,
-                includeBaseDirectory: false);
+            try {
+                await CreateFirmwareZipAsync(
+                        location,
+                        zip,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            } catch {
+                TryDelete(zip);
+                throw;
+            }
+
             _temporaryFiles.Add(zip);
             Add(
                 ToolkitAttachmentRole.Source,
@@ -221,6 +231,56 @@ internal sealed class ToolkitAttachmentPlan : IAsyncDisposable {
             SourceLocation = ToolkitInputKind.Attachment,
             Source = null
         };
+    }
+
+    private static async ValueTask CreateFirmwareZipAsync(
+        string directory,
+        string zipPath,
+        CancellationToken cancellationToken) {
+        var root = Path.GetFullPath(directory);
+        var parameterPath = Path.Combine(root, "parameter.txt");
+        if (!File.Exists(parameterPath)) {
+            throw new InvalidDataException(
+                $"Firmware directory '{directory}' contains no parameter.txt.");
+        }
+
+        var parameter = await File.ReadAllTextAsync(
+                parameterPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var partitions = RockchipParameterParser.Parse(parameter);
+        var files = new List<string> { parameterPath };
+        AddIfExists(files, Path.Combine(root, "package-file"));
+        foreach (var partition in partitions) {
+            AddIfExists(
+                files,
+                Path.Combine(root, $"{partition.Name}.img"));
+        }
+
+        using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+        foreach (var path in files) {
+            var entry = archive.CreateEntry(
+                Path.GetFileName(path),
+                CompressionLevel.Fastest);
+            await using var source = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                128 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            await using var destination = entry.Open();
+            await source.CopyToAsync(destination, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static void AddIfExists(
+        List<string> files,
+        string path) {
+        if (File.Exists(path)) {
+            files.Add(path);
+        }
     }
 
     private async ValueTask<string> FetchAsync(

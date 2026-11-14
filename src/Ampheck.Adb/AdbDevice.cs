@@ -1,4 +1,3 @@
-using Ampheck.Adb.Device;
 using Ampheck.Adb.Server;
 using Ampheck.Adb.Sync;
 
@@ -16,20 +15,6 @@ public sealed class AdbDevice {
         Product = serverDevice.Product;
         Model = serverDevice.Model;
         DeviceName = serverDevice.Device;
-        Backend = AdbDeviceBackend.AdbServer;
-    }
-
-    internal AdbDevice(
-        AdbClient client,
-        AdbDeviceInfo device,
-        AdbDeviceState state) {
-        _client = client;
-        SerialNumber = device.SerialNumber ?? "unknown";
-        State = state;
-        VendorId = device.VendorId;
-        ProductId = device.ProductId;
-        Backend = AdbDeviceBackend.Usb;
-        DirectInfo = device;
     }
 
     public string SerialNumber { get; }
@@ -42,15 +27,7 @@ public sealed class AdbDevice {
 
     public string? DeviceName { get; }
 
-    public ushort? VendorId { get; }
-
-    public ushort? ProductId { get; }
-
-    public AdbDeviceBackend Backend { get; }
-
     public bool IsOnline => State == AdbDeviceState.Device;
-
-    internal AdbDeviceInfo? DirectInfo { get; }
 
     public Task<string> ExecuteShellAsync(
         string command,

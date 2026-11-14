@@ -13,7 +13,10 @@ internal sealed class ToolkitProcessExecutor : IToolkitExecutor {
         _limits.Validate();
     }
 
-    public async Task<ToolkitResult> ExecuteAsync(ToolkitRequest request, Func<ToolkitEvent, ValueTask> report, CancellationToken cancellationToken) {
+    public async Task<ToolkitResult> ExecuteAsync(
+        ToolkitRequest request,
+        Func<ToolkitEvent, ValueTask> report,
+        CancellationToken cancellationToken) {
         var startInfo = ToolkitWorkerProcessFactory.Create(
             request,
             _limits);

@@ -8,7 +8,11 @@ using Microsoft.Extensions.Logging;
 namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 
 internal static class ToolkitClientCommandRunner {
-    public static async Task<int> RunAsync(string command, CommandOptions options, ILogger logger, ConsoleRenderer console) {
+    public static async Task<int> RunAsync(
+        string command,
+        CommandOptions options,
+        ILogger logger,
+        ConsoleRenderer console) {
         var endpoint = ToolkitEndpoint.Parse(options.ServerEndpoint ??
             throw new ArgumentException("A toolkit server endpoint is required."));
         var token = Environment.GetEnvironmentVariable(

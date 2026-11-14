@@ -17,5 +17,6 @@ public enum ToolkitOperation {
     SerialOpen,
     SerialClose,
     SerialTerminal,
-    SerialHistory
+    SerialHistory,
+    AdbServerEnsure
 }

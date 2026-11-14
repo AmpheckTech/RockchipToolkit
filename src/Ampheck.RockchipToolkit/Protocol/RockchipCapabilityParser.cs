@@ -11,6 +11,7 @@ public static class RockchipCapabilityParser {
                 "The capability response is shorter than eight bytes.");
         }
 
+        // The capability response is an 8-byte little-endian feature bitfield.
         var raw = BinaryPrimitives.ReadUInt64LittleEndian(data);
         return new RockchipCapabilityInfo(
             (RockchipCapabilityFlags)raw,

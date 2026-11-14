@@ -6,6 +6,10 @@ using Microsoft.Extensions.Logging;
 namespace Ampheck.RockchipToolkit.Device;
 
 internal static class RockchipBootLoader {
+    // MaskROM bootstrap transfer IDs, as used by Barebox rk-usb-loader.
+    private const ushort Code471 = 0x0471;
+    private const ushort Code472 = 0x0472;
+
     public static async ValueTask LoadAsync(
         RockUsbProtocol protocol,
         UsbDeviceInfo device,
@@ -24,30 +28,25 @@ internal static class RockchipBootLoader {
             "Opened loader image {LoaderPath} ({ImageKind})",
             path,
             image.Header.Kind);
-        var entries = image.BootEntries
-            .Where(entry =>
-                entry.Type is
-                    BootEntryType.Code471 or
-                    BootEntryType.Code472)
-            .ToArray();
-        if (entries.Length == 0) {
+        var transfers = GetTransfers(image);
+        if (transfers.Count == 0) {
             throw new InvalidDataException(
-                "The loader contains no 471 or 472 BOOT entries.");
+                "The loader contains no 471 or 472 boot transfers.");
         }
 
         logger.LogInformation(
-            "Downloading {BootEntryCount} BOOT entry/entries",
-            entries.Length);
-        foreach (var entry in entries) {
-            await SendEntryAsync(
+            "Downloading {BootTransferCount} boot transfer(s)",
+            transfers.Count);
+        foreach (var transfer in transfers) {
+            await SendTransferAsync(
                 protocol,
                 image,
-                entry,
+                transfer,
                 cancellationToken,
                 logger).ConfigureAwait(false);
-            if (entry.Delay > 0) {
+            if (transfer.Delay > 0) {
                 await Task.Delay(
-                    TimeSpan.FromMilliseconds(entry.Delay),
+                    TimeSpan.FromMilliseconds(transfer.Delay),
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -58,35 +57,83 @@ internal static class RockchipBootLoader {
         logger.LogInformation("Loader download completed");
     }
 
-    private static async ValueTask SendEntryAsync(
-        RockUsbProtocol protocol,
-        RockchipImage image,
-        RockchipBootEntry entry,
-        CancellationToken cancellationToken,
-        ILogger logger) {
-        if (entry.Size > int.MaxValue) {
-            throw new InvalidDataException(
-                $"BOOT entry '{entry.Name}' is too large.");
+    private static IReadOnlyList<BootTransfer> GetTransfers(
+        RockchipImage image) {
+        var transfers = new List<BootTransfer>();
+        if (image.BootKind.IsNewIdb()) {
+            transfers.Add(new BootTransfer(
+                $"{image.BootKind} header",
+                Code471,
+                0,
+                image.BootHeaderSize,
+                0));
         }
 
-        var data = new byte[checked((int)entry.Size)];
-        await using (var stream = image.OpenBootEntryStream(entry)) {
-            await stream.ReadExactlyAsync(data, cancellationToken)
+        foreach (var entry in image.BootEntries) {
+            if (entry.Type is not (BootEntryType.Code471 or BootEntryType.Code472)) {
+                continue;
+            }
+
+            transfers.Add(new BootTransfer(
+                $"BOOT entry {entry.Name}",
+                entry.Type == BootEntryType.Code471 ? Code471 : Code472,
+                entry.Offset,
+                entry.Size,
+                entry.Delay));
+        }
+
+        return transfers.AsReadOnly();
+    }
+
+    private static async ValueTask SendTransferAsync(
+        RockUsbProtocol protocol,
+        RockchipImage image,
+        BootTransfer transfer,
+        CancellationToken cancellationToken,
+        ILogger logger) {
+        byte[] data;
+        await using (var stream = image.OpenBootRange(
+            transfer.Offset,
+            transfer.Size)) {
+            data = await ReadAsync(
+                    stream,
+                    transfer.Size,
+                    transfer.Description,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        var requestCode = entry.Type == BootEntryType.Code471
-            ? (ushort)0x0471
-            : (ushort)0x0472;
         logger.LogDebug(
-            "Sending BOOT entry {EntryName} as 0x{RequestCode:X4} " +
+            "Sending {Description} as 0x{RequestCode:X4} " +
             "({ByteCount} bytes)",
-            entry.Name,
-            requestCode,
+            transfer.Description,
+            transfer.RequestCode,
             data.Length);
         await protocol.DownloadBootEntryAsync(
-            requestCode,
+            transfer.RequestCode,
             data,
             cancellationToken).ConfigureAwait(false);
     }
+
+    private static async ValueTask<byte[]> ReadAsync(
+        Stream stream,
+        long size,
+        string description,
+        CancellationToken cancellationToken) {
+        if (size > int.MaxValue) {
+            throw new InvalidDataException($"{description} is too large.");
+        }
+
+        var data = new byte[checked((int)size)];
+        await stream.ReadExactlyAsync(data, cancellationToken)
+            .ConfigureAwait(false);
+        return data;
+    }
+
+    private sealed record BootTransfer(
+        string Description,
+        ushort RequestCode,
+        uint Offset,
+        uint Size,
+        uint Delay);
 }

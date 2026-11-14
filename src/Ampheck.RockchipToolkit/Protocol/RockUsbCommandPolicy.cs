@@ -18,8 +18,8 @@ internal static class RockUsbCommandPolicy {
             RockUsbOperation.WriteSpiFlash or
             RockUsbOperation.WriteNewEfuse or
             RockUsbOperation.ReadNewEfuse or
-            RockUsbOperation.EraseLba => 0x0A,
-            _ => 0x06
+            RockUsbOperation.EraseLba => 0x0A, // 10-byte vendor command block.
+            _ => 0x06 // Opcode and subcode only.
         };
     }
 

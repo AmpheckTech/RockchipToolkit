@@ -18,8 +18,7 @@ internal static class InteractiveShellRunner {
             text => {
                 Console.Out.Write(text);
                 Console.Out.Flush();
-            },
-            readTimeout: Timeout.InfiniteTimeSpan);
+            });
         if (!interactive) {
             var stdinTask = PumpStandardInputAsync(shell);
             await stdinTask.ConfigureAwait(false);

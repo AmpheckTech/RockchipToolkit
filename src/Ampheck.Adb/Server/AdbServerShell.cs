@@ -15,8 +15,7 @@ public sealed class AdbServerShell : IAdbShellStream {
 
     public async Task ReadAsync(
         Action<string> output,
-        CancellationToken cancellationToken = default,
-        TimeSpan? readTimeout = null) {
+        CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(output);
         ObjectDisposedException.ThrowIf(_disposed, this);
 

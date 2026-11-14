@@ -59,8 +59,7 @@ internal static class SerialCommandRunner {
                         request,
                         printer.Write,
                         data => {
-                            Console.OpenStandardOutput()
-                                .Write(data.Span);
+                            SerialTerminalRunner.WriteOutput(data.Span);
                         })
                     .ConfigureAwait(false);
             await SerialTerminalRunner.RunAsync(
@@ -160,11 +159,11 @@ internal static class SerialCommandRunner {
     }
 
     private static async Task PumpSessionAsync(
-        Ampheck.Serial.SerialSession session,
+        Ampheck.RockchipToolkit.Transport.Serial.SerialSession session,
         ConsoleRenderer console) {
         await foreach (var value in session.Events.ReadAllAsync()) {
             if (value.Kind ==
-                Ampheck.Serial.SerialEventKind.Data) {
+                Ampheck.RockchipToolkit.Transport.Serial.SerialEventKind.Data) {
                 await SerialTerminalRunner.WriteOutputAsync(
                         value.Data)
                     .ConfigureAwait(false);

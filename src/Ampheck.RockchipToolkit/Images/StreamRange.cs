@@ -28,4 +28,20 @@ internal static class StreamRange {
             buffer = buffer[read..];
         }
     }
+
+    public static async ValueTask ReadExactlyAsync(
+        Stream stream,
+        Memory<byte> buffer,
+        CancellationToken cancellationToken) {
+        while (!buffer.IsEmpty) {
+            var read = await stream.ReadAsync(buffer, cancellationToken)
+                .ConfigureAwait(false);
+            if (read == 0) {
+                throw new EndOfStreamException(
+                    "The Rockchip image ended unexpectedly.");
+            }
+
+            buffer = buffer[read..];
+        }
+    }
 }

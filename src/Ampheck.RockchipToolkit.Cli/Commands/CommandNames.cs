@@ -36,4 +36,7 @@ internal static class CommandNames {
     public const string SerialClose = Serial + " close";
     public const string SerialTerminal = Serial + " terminal";
     public const string SerialHistory = Serial + " history";
+    public const string Image = "image";
+    public const string ImageUnpack = Image + " unpack";
+    public const string ImagePack = Image + " pack";
 }

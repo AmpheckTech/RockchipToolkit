@@ -86,13 +86,8 @@ internal static class CommandOptionsBinder {
         Command command,
         CommandParseState state,
         string canonicalCommand,
+        bool includeLoaderFilters = false,
         Action<ParseResult>? bind = null) {
-        var vid = new Option<string?>("--vid") {
-            Description = "USB vendor ID."
-        };
-        var pid = new Option<string?>("--pid") {
-            Description = "USB product ID."
-        };
         var serial = new Option<string?>(
             "--serial",
             "-s") {
@@ -101,19 +96,35 @@ internal static class CommandOptionsBinder {
         var verbose = new Option<bool>("--verbose", "-v") {
             Description = "Enable informational and debug logs."
         };
-        command.Add(vid);
-        command.Add(pid);
         command.Add(serial);
         command.Add(verbose);
+
+        Option<string?>? vid = null;
+        Option<string?>? pid = null;
+        if (includeLoaderFilters) {
+            vid = new Option<string?>("--vid") {
+                Description = "RockUSB Loader vendor ID."
+            };
+            pid = new Option<string?>("--pid") {
+                Description = "RockUSB Loader product ID."
+            };
+            command.Add(vid);
+            command.Add(pid);
+        }
+
         command.SetAction(parsed => {
             state.Command = canonicalCommand;
-            state.Options.VendorId = ValueParser.ParseOptionalUInt16(
-                "--vid",
-                parsed.GetValue(vid));
-            state.Options.ProductId = ValueParser.ParseOptionalUInt16(
-                "--pid",
-                parsed.GetValue(pid));
             state.Options.AdbSerial = parsed.GetValue(serial);
+            state.Options.VendorId = vid is null
+                ? null
+                : ValueParser.ParseOptionalUInt16(
+                    "--vid",
+                    parsed.GetValue(vid));
+            state.Options.ProductId = pid is null
+                ? null
+                : ValueParser.ParseOptionalUInt16(
+                    "--pid",
+                    parsed.GetValue(pid));
             bind?.Invoke(parsed);
             return 0;
         });

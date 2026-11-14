@@ -4,17 +4,10 @@ namespace Ampheck.Adb;
 
 public sealed class AdbShell : IAdbShellStream {
     private readonly IAdbShellStream _shell;
-    private readonly IAsyncDisposable? _connection;
-    private readonly IAsyncDisposable? _provider;
     private bool _disposed;
 
-    internal AdbShell(
-        IAdbShellStream shell,
-        IAsyncDisposable? connection = null,
-        IAsyncDisposable? provider = null) {
+    internal AdbShell(IAdbShellStream shell) {
         _shell = shell;
-        _connection = connection;
-        _provider = provider;
     }
 
     public ValueTask WriteAsync(
@@ -44,13 +37,11 @@ public sealed class AdbShell : IAdbShellStream {
 
     public Task ReadAsync(
         Action<string> output,
-        CancellationToken cancellationToken = default,
-        TimeSpan? readTimeout = null) {
+        CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return _shell.ReadAsync(
             output,
-            cancellationToken,
-            readTimeout);
+            cancellationToken);
     }
 
     public async ValueTask DisposeAsync() {
@@ -60,12 +51,5 @@ public sealed class AdbShell : IAdbShellStream {
 
         _disposed = true;
         await _shell.DisposeAsync().ConfigureAwait(false);
-        if (_connection is not null) {
-            await _connection.DisposeAsync().ConfigureAwait(false);
-        }
-
-        if (_provider is not null) {
-            await _provider.DisposeAsync().ConfigureAwait(false);
-        }
     }
 }

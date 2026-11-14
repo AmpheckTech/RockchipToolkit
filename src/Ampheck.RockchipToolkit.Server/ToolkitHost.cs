@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
-using Ampheck.Adb.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -17,7 +16,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
     private readonly ToolkitDiscoveryResponder _discovery;
     private readonly ToolkitBroadcastResponder _broadcast;
     private readonly ToolkitSerialService _serial;
-    private readonly AdbServerDaemon _adb;
+    private readonly AdbServerProcess _adb;
     private readonly ConcurrentDictionary<long, Task> _clients = [];
     private long _activeClients;
     private long _nextClientId;
@@ -39,11 +38,9 @@ public sealed class ToolkitHost : IAsyncDisposable {
         _serial = new ToolkitSerialService(
             loggerFactory ?? NullLoggerFactory.Instance,
             options.SerialHistoryBytes);
-        _adb = new AdbServerDaemon(
-            new AdbServerDaemonOptions {
-                Host = options.Endpoint.Host,
-                Port = options.AdbPort
-            },
+        _adb = new AdbServerProcess(
+            options.Endpoint.Host,
+            options.AdbPort,
             loggerFactory ?? NullLoggerFactory.Instance);
         _discovery = new ToolkitDiscoveryResponder(options, _logger);
         _broadcast = new ToolkitBroadcastResponder(options);
@@ -90,7 +87,6 @@ public sealed class ToolkitHost : IAsyncDisposable {
         }
 
         var monitorTask = MonitorIdleAsync(stop.Token);
-        var adbTask = RunAdbAsync(stop.Token);
         try {
             _options.OnListening?.Invoke();
             while (!stop.IsCancellationRequested) {
@@ -121,7 +117,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
             listener.Stop();
             await Task.WhenAll(_clients.Values)
                 .ConfigureAwait(false);
-            await Task.WhenAll(monitorTask, adbTask)
+            await monitorTask
                 .ConfigureAwait(false);
         }
     }
@@ -179,8 +175,8 @@ public sealed class ToolkitHost : IAsyncDisposable {
                 _options,
                 _executor,
                 _serial,
+                _adb,
                 _operationGate,
-                _adb.ReleaseUsbDevicesAsync,
                 _logger,
                 client.Client.RemoteEndPoint?.ToString(),
                 serverToken);
@@ -236,24 +232,6 @@ public sealed class ToolkitHost : IAsyncDisposable {
         }
     }
 
-    private async Task RunAdbAsync(
-        CancellationToken serverToken) {
-        try {
-            await _adb.RunAsync(serverToken).ConfigureAwait(false);
-        } catch (Exception error) when (
-            error is SocketException or
-            InvalidOperationException or
-            ArgumentException or
-            OperationCanceledException) {
-            if (!serverToken.IsCancellationRequested) {
-                _logger.LogWarning(
-                    error,
-                    "Integrated ADB server is unavailable on port {Port}",
-                    _options.AdbPort);
-            }
-        }
-    }
-
     private static void ValidateOptions(ToolkitHostOptions options) {
         ArgumentNullException.ThrowIfNull(options.Endpoint);
         if (options.Endpoint.Port is <= 0 or > ushort.MaxValue) {
@@ -287,7 +265,7 @@ public sealed class ToolkitHost : IAsyncDisposable {
         if (options.AdbPort is <= 0 or > ushort.MaxValue) {
             throw new ArgumentOutOfRangeException(
                 nameof(options),
-                "The integrated ADB server port is invalid.");
+                "The ADB server port is invalid.");
         }
     }
 }

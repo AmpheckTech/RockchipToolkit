@@ -11,6 +11,9 @@ public static class RockchipFlashInfoParser {
                 "The flash-info response is shorter than eleven bytes.");
         }
 
+        // Response offsets (little-endian multi-byte fields): sector count u32
+        // at 0, sectors per block u16 at 4, page size code u8 at 6, ECC bits
+        // u8 at 7, access time u8 at 8, manufacturer u8 at 9, chip select u8 at 10.
         var sectorCount = BinaryPrimitives.ReadUInt32LittleEndian(data);
         var sectorsPerBlock =
             BinaryPrimitives.ReadUInt16LittleEndian(data[4..]);

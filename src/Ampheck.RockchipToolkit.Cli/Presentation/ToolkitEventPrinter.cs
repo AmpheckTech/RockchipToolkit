@@ -79,14 +79,16 @@ internal sealed class ToolkitEventPrinter(
         }
 
         if (_progress is null ||
-            _progressLabel != label ||
-            _progressTotal != total) {
+            _progressLabel != label) {
             _progress?.Dispose();
             _progress = new ProgressBar(
                 console,
                 label,
                 total);
             _progressLabel = label;
+            _progressTotal = total;
+        } else if (_progressTotal != total) {
+            _progress.UpdateTotal(total);
             _progressTotal = total;
         }
 

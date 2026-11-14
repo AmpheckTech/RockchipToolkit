@@ -12,6 +12,7 @@ internal static class UpdateImageFlasher {
         ILogger logger,
         Func<string, ValueTask> report,
         Func<long, long, ValueTask>? progress,
+        Func<long, long, ValueTask>? eraseProgress,
         ToolkitTransferLimits limits,
         CancellationToken cancellationToken) {
         await using var input = await InputFile.OpenAsync(
@@ -41,7 +42,7 @@ internal static class UpdateImageFlasher {
             throw new InvalidDataException(
                 "The update image contains no parameter entry.");
         var parameter = Encoding.UTF8.GetString(
-                update.ReadEntryBytes(parameterEntry))
+                update.ReadParameterBytes(parameterEntry))
             .TrimEnd('\0');
         var partitions = RockchipParameterParser.Parse(parameter);
         var images = new List<(
@@ -106,7 +107,9 @@ internal static class UpdateImageFlasher {
                         ? null
                         : (written, _) => progress(
                             completedBytes + written,
-                            totalBytes))
+                            totalBytes),
+                    eraseProgress,
+                    cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             completedBytes += entry.Size;
         }

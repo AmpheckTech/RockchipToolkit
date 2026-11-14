@@ -12,8 +12,8 @@
 - 写入前可备份目标区域
 - 串口打开、关闭、交互终端和历史读取
 - 多客户端共享同一串口
-- ADB 设备列表、Shell、Push、Pull 和重启到 Loader
-- Server 提供 ADB 转发
+- 通过官方 adb server 提供 ADB 设备列表、Shell、Push、Pull 和重启到 Loader
+- 拆包和重新打包 RKFW/RKAF 固件
 - 局域网自动发现 Server
 - 支持 Windows、Linux（x64/ARM64）
 
@@ -30,7 +30,23 @@ chmod +x arkt
 ## 本机直接使用
 
 普通命令会探测本机 `127.0.0.1:5070`。Server 未运行时会在后台自动启动，
-后续命令共用同一个 Server 和 USB/串口状态。ADB 默认使用 `5037` 端口。
+后续命令共用同一个 Server 和 USB/串口状态。首次执行需要 ADB 的命令
+（例如 `arkt adb devices`）时，Toolkit Server 会按需启动官方 adb server，
+ADB 默认使用 `5037` 端口。
+
+ADB 功能需要安装 Android SDK Platform Tools。Server 按以下顺序查找 `adb`：
+
+1. `ARKT_ADB` 指定的可执行文件
+2. 当前程序目录下的 `platform-tools/adb`
+3. `ANDROID_SDK_ROOT/platform-tools/adb`
+4. `ANDROID_HOME/platform-tools/adb`
+5. `PATH`
+
+也可以手动覆盖可执行文件位置：
+
+```bash
+export ARKT_ADB=/opt/android-sdk/platform-tools/adb
+```
 
 ```bash
 arkt server status
@@ -40,19 +56,6 @@ arkt server stop
 
 Server 以当前用户运行。Linux 下需要给该用户配置 USB/串口 udev 权限或加入
 相应设备组；也可以直接用 `sudo` 启动命令，让自动启动的 Server 获得权限。
-
-启动后可以直接使用串口：
-
-```bash
-arkt serial open /dev/ttyUSB0
-arkt serial terminal /dev/ttyUSB0
-```
-
-按 `Ctrl+]` 退出当前串口终端。物理串口会继续保持打开；需要关闭时执行：
-
-```bash
-arkt serial close /dev/ttyUSB0
-```
 
 ## 远程使用
 
@@ -100,10 +103,10 @@ export ARKT_CLIENT_NAME=build-pc-01
 --serial-history-kib N   每个串口的历史缓冲大小
 ```
 
-Server 同时提供 ADB 服务，默认监听 `5037`。端口被占用时其他功能仍可使用，
-但日志中会提示 ADB 服务不可用。
+Server 监听非回环地址时会以 `adb -a` 启动官方 adb server，使远程客户端可以
+连接。未安装 adb 或端口被占用时，RockUSB、串口等功能不受影响。
 
-当前通信未启用加密。ADB Server 也没有认证机制，因此不要把 `0.0.0.0:5070`
+当前通信未启用加密。官方 ADB server 也没有认证机制，因此不要把 `0.0.0.0:5070`
 或 `0.0.0.0:5037` 直接暴露到公网。
 
 ## 发现 Server
@@ -203,17 +206,9 @@ arkt flash http://127.0.0.1/update.img
 arkt flash http://127.0.0.1/update.img --fetch client
 ```
 
-由客户端下载后上传给 Server。
-
 ### 原始扇区写入
 
-`--sector` 是目标起始扇区，每个扇区 512 字节：
-
-```text
-目标偏移 = 扇区号 × 512
-```
-
-例如从 `0x800000` 开始写：
+`--sector` 是目标起始扇区，每个扇区 512 字节。例如从 `0x800000` 开始写：
 
 ```bash
 arkt write boot.img --sector 0x4000
@@ -270,6 +265,29 @@ arkt reset power-off
 arkt reset reset-mask-rom
 arkt reset disconnect
 ```
+
+## 固件镜像打包与拆包
+
+RKFW 和独立 RKAF 镜像可以直接在本机拆包、重新打包，不会启动 Server：
+
+```bash
+arkt image unpack update.img ./firmware
+arkt image pack ./firmware update-new.img              # RKAF
+arkt image pack ./firmware update-new.img --chip RK3399 # RKFW
+```
+
+拆包会生成 `package-file`，没有 `parameter` 时还会生成
+`rkaf-metadata.tsv`，打包时需要保留。RKFW 还会拆出 `BOOT`；目录中有 `BOOT`
+时用 `--chip` 打包为 RKFW，否则打包为 RKAF。拆包会校验 RKAF CRC，RKFW 还会
+校验整个文件的 MD5。
+
+默认不覆盖已有输出，需要替换时加 `--force`：
+
+```bash
+arkt image pack ./firmware update-new.img --chip RK3399 --force
+```
+
+当前不支持 SSFW。
 
 ## 串口
 
@@ -366,20 +384,15 @@ arkt adb reboot normal
 arkt adb reboot recovery
 ```
 
-设置 `ARKT_SERVER` 后，ADB 请求由 Server 转发。ADB 端口默认是 `5037`，
-Server 和客户端需要使用相同的端口值：
+使用 `--serial` 选择目标设备。只有 `arkt adb reboot loader` 的 `--vid` /
+`--pid` 用于进入 Loader 后筛选 RockUSB 设备；普通 ADB 设备筛选不支持 VID/PID。
+
+ADB 端口默认是 `5037`。使用 `ARKT_SERVER` 时，客户端从 Server 地址推导主机并
+直接连接该主机上的 adb server，因此 Toolkit Server 和客户端需要配置相同的 ADB
+端口：
 
 ```bash
 export ARKT_ADB_PORT=5038
-```
-
-发布物还包括独立的 `adbcli`，不依赖 `arkt` 或系统安装的 `adb`：
-
-```bash
-adbcli devices
-adbcli shell
-adbcli push ./local.bin /tmp/local.bin
-adbcli server nodaemon
 ```
 
 ## 固件输入形式

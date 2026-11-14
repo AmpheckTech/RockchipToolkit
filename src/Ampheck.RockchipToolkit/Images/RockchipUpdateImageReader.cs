@@ -3,102 +3,216 @@ using System.Text;
 
 namespace Ampheck.RockchipToolkit.Images;
 
-internal static class RockchipUpdateImageReader {
-    private const int FirmwareHeaderLength = 140;
-    private const int FirmwareEntryLength = 112;
-    private const int MaximumEntryCount = 32;
-    private const uint FirmwareTag = 0x46414B52;
+internal sealed record RockchipUpdateImageReadResult(
+    RockchipUpdateImageKind Kind,
+    RockchipImageHeader? ContainerHeader,
+    uint Version,
+    string MachineModel,
+    string MachineId,
+    string Manufacturer,
+    IReadOnlyList<RockchipUpdateEntry> Entries);
 
-    public static (
-        RockchipImageHeader ContainerHeader,
-        uint Version,
-        string MachineModel,
-        string Manufacturer,
-        IReadOnlyList<RockchipUpdateEntry> Entries) Read(FileStream stream) {
-        var container = RockchipImageReader.Read(stream).Header;
-        if (container.Kind != RockchipImageKind.Firmware) {
-            throw new InvalidDataException(
-                "The file is a BOOT image, not a Rockchip update image.");
+internal static class RockchipUpdateImageReader {
+    private const uint FirmwareTag = 0x46414B52;
+    private const uint ImageTag = 0x57464B52;
+
+    public static RockchipUpdateImageReadResult Read(Stream stream) {
+        Span<byte> signature = stackalloc byte[4];
+        StreamRange.ReadExactly(stream, signature, 0);
+        var tag = BinaryPrimitives.ReadUInt32LittleEndian(signature);
+
+        RockchipUpdateImageKind kind;
+        RockchipImageHeader? container;
+        long firmwareOffset;
+        long firmwareSize;
+        switch (tag) {
+            case FirmwareTag:
+                kind = RockchipUpdateImageKind.Rkaf;
+                container = null;
+                firmwareOffset = 0;
+                firmwareSize = stream.Length;
+                break;
+            case ImageTag:
+                kind = RockchipUpdateImageKind.Rkfw;
+                container = RockchipImageReader.Read(stream).Header;
+                if (container.Kind != RockchipImageKind.Firmware) {
+                    throw new InvalidDataException(
+                        "The file does not contain a Rockchip update image.");
+                }
+
+                firmwareOffset = container.FirmwareOffset;
+                firmwareSize = container.FirmwareSize;
+                break;
+            default:
+                throw new InvalidDataException(
+                    "The file is neither an RKFW nor an RKAF update image.");
         }
 
-        if (container.FirmwareSize < FirmwareHeaderLength) {
+        if (firmwareSize < RockchipImageLayout.RkafHeaderSize) {
             throw new InvalidDataException(
                 "The RKAF firmware header is truncated.");
         }
 
-        var header = new byte[FirmwareHeaderLength];
-        StreamRange.ReadExactly(
-            stream,
-            header,
-            container.FirmwareOffset);
+        var header = new byte[RockchipImageLayout.RkafHeaderSize];
+        StreamRange.ReadExactly(stream, header, firmwareOffset);
         if (U32(header, 0) != FirmwareTag) {
             throw new InvalidDataException(
-                "The RKFW payload has no RKAF firmware signature.");
+                "The update image has no RKAF firmware signature.");
         }
 
-        var headerSize = U32(header, 4);
-        var entryCount = BinaryPrimitives.ReadInt32LittleEndian(
-            header.AsSpan(136));
-        if (headerSize < FirmwareHeaderLength ||
-            entryCount < 0 ||
-            entryCount > MaximumEntryCount) {
+        var entryCount = U32(header, RockchipImageLayout.RkafEntryCountOffset);
+        if (entryCount > RockchipImageLayout.RkafMaximumEntries) {
             throw new InvalidDataException(
                 $"The RKAF header declares {entryCount} entries.");
         }
 
-        var entryData = new byte[checked(
-            entryCount * FirmwareEntryLength)];
-        StreamRange.ReadExactly(
-            stream,
-            entryData,
-            checked(container.FirmwareOffset + FirmwareHeaderLength));
         var entries = ReadEntries(
-            stream,
+            header,
             container,
-            entryData,
-            entryCount);
-
-        return (
+            firmwareOffset,
+            firmwareSize,
+            checked((int)entryCount));
+        return new RockchipUpdateImageReadResult(
+            kind,
             container,
-            U32(header, 132),
-            DecodeText(header.AsSpan(8, 64)),
-            DecodeText(header.AsSpan(72, 60)),
+            U32(header, RockchipImageLayout.RkafVersionOffset),
+            DecodeText(header.AsSpan(
+                RockchipImageLayout.RkafMachineModelOffset,
+                RockchipImageLayout.RkafMachineModelSize)),
+            DecodeText(header.AsSpan(
+                RockchipImageLayout.RkafMachineIdOffset,
+                RockchipImageLayout.RkafMachineIdSize)),
+            DecodeText(header.AsSpan(
+                RockchipImageLayout.RkafManufacturerOffset,
+                RockchipImageLayout.RkafManufacturerSize)),
             entries);
     }
 
     private static IReadOnlyList<RockchipUpdateEntry> ReadEntries(
-        FileStream stream,
-        RockchipImageHeader container,
-        byte[] data,
+        ReadOnlySpan<byte> header,
+        RockchipImageHeader? container,
+        long firmwareOffset,
+        long firmwareSize,
         int entryCount) {
         var entries = new List<RockchipUpdateEntry>(entryCount);
+        var knownMembers = new List<(
+            uint StoredOffset,
+            string Path,
+            long Offset,
+            long Size)>();
+        var previousAllocationEnd = (long)RockchipImageLayout.RkafHeaderSize;
+        var firmwareEnd = firmwareOffset + firmwareSize -
+            RockchipImageLayout.RkafChecksumSize;
+
         for (var index = 0; index < entryCount; index++) {
-            var offset = index * FirmwareEntryLength;
-            var name = DecodeText(data.AsSpan(offset, 32));
-            var fileName = DecodeText(data.AsSpan(offset + 32, 64));
-            var rawOffset = U32(data, offset + 96);
-            var flashOffset = U32(data, offset + 100);
-            var useSpace = U32(data, offset + 104);
-            var size = U32(data, offset + 108);
-            var absoluteOffset = ResolveAbsoluteOffset(
-                stream,
-                container,
-                name,
-                rawOffset,
-                size);
+            var position = RockchipImageLayout.RkafEntryOffset +
+                (index * RockchipImageLayout.RkafEntrySize);
+
+            // RKAF entry layout is little-endian and fixed at 112 bytes:
+            // name +0x00 (32), path +0x20 (60), flash size +0x5c,
+            // part offset +0x60, flash offset +0x64, padded sectors +0x68,
+            // and stored byte count +0x6c.
+            var name = DecodeText(header.Slice(
+                position,
+                RockchipImageLayout.RkafEntryNameSize));
+            var path = DecodeText(header.Slice(
+                position + RockchipImageLayout.RkafEntryPathOffset,
+                RockchipImageLayout.RkafEntryPathSize));
+            var flashSize = U32(
+                header,
+                position + RockchipImageLayout.RkafEntryFlashSizeOffset);
+            var storedOffset = U32(
+                header,
+                position + RockchipImageLayout.RkafEntryStoredOffsetOffset);
+            var flashOffset = U32(
+                header,
+                position + RockchipImageLayout.RkafEntryFlashOffsetOffset);
+            var paddedSectors = U32(
+                header,
+                position + RockchipImageLayout.RkafEntryPaddedSectorsOffset);
+            var storedSize = U32(
+                header,
+                position + RockchipImageLayout.RkafEntryStoredSizeOffset);
+
+            long absoluteOffset;
+            long size;
+            if (container is not null &&
+                name.Equals("bootloader", StringComparison.OrdinalIgnoreCase) &&
+                storedSize == container.BootSize) {
+                absoluteOffset = container.BootOffset;
+                size = container.BootSize;
+            } else {
+                var known = knownMembers.FirstOrDefault(member =>
+                    member.StoredOffset == storedOffset &&
+                    member.Path.Equals(path, StringComparison.Ordinal));
+                if (known.Path is not null) {
+                    absoluteOffset = known.Offset;
+                    size = known.Size;
+                } else {
+                    var paddedBytes = checked(
+                        (long)paddedSectors * RockchipImageLayout.SectorSize);
+                    size = paddedBytes == 0
+                        ? storedSize
+                        : RockchipImageLayout.RecoverUInt32Value(
+                            storedSize,
+                            paddedBytes);
+                    long offset;
+                    if (storedOffset == 0 && size == 0) {
+                        offset = 0;
+                    } else {
+                        offset = storedOffset;
+                        if (offset < previousAllocationEnd) {
+                            var wraps = (previousAllocationEnd - offset +
+                                RockchipImageLayout.UInt32Range - 1) /
+                                RockchipImageLayout.UInt32Range;
+                            offset = checked(offset +
+                                (wraps * RockchipImageLayout.UInt32Range));
+                        }
+
+                        var allocationSize = paddedBytes == 0
+                            ? RockchipImageLayout.AlignUp(
+                                size,
+                                RockchipImageLayout.SectorSize)
+                            : paddedBytes;
+                        previousAllocationEnd = checked(offset + allocationSize);
+                    }
+
+                    absoluteOffset = firmwareOffset + offset;
+                    knownMembers.Add((
+                        storedOffset,
+                        path,
+                        absoluteOffset,
+                        size));
+                }
+
+                if (size > 0) {
+                    var relativeOffset = absoluteOffset - firmwareOffset;
+                    if (relativeOffset < RockchipImageLayout.RkafHeaderSize ||
+                        relativeOffset > firmwareSize ||
+                        size > firmwareSize - relativeOffset) {
+                        throw new InvalidDataException(
+                            $"Update entry '{name}' points outside the RKAF image.");
+                    }
+
+                    if (absoluteOffset + size > firmwareEnd) {
+                        throw new InvalidDataException(
+                            $"Update entry '{name}' overlaps the RKAF checksum.");
+                    }
+                }
+            }
+
             entries.Add(new RockchipUpdateEntry(
                 name,
-                fileName,
+                path,
                 absoluteOffset,
                 flashOffset,
-                useSpace,
+                flashSize,
+                paddedSectors,
                 size));
         }
 
         var duplicate = entries
-            .GroupBy(
-                entry => entry.Name,
-                StringComparer.OrdinalIgnoreCase)
+            .GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null) {
             throw new InvalidDataException(
@@ -108,43 +222,13 @@ internal static class RockchipUpdateImageReader {
         return entries.AsReadOnly();
     }
 
-    private static long ResolveAbsoluteOffset(
-        FileStream stream,
-        RockchipImageHeader container,
-        string name,
-        uint rawOffset,
-        uint size) {
-        if (size == 0) {
-            return rawOffset;
-        }
-
-        if (name.Equals(
-                "bootloader",
-                StringComparison.OrdinalIgnoreCase) &&
-            size == container.BootSize &&
-            (long)container.BootOffset <= stream.Length - size) {
-            return container.BootOffset;
-        }
-
-        var relativeOffset = checked(
-            (long)container.FirmwareOffset + rawOffset);
-        if (rawOffset <= container.FirmwareSize - size &&
-            relativeOffset <= stream.Length - size) {
-            return relativeOffset;
-        }
-
-        throw new InvalidDataException(
-            $"Update entry '{name}' points outside the image.");
-    }
-
     private static string DecodeText(ReadOnlySpan<byte> data) {
         var terminator = data.IndexOf((byte)0);
         if (terminator >= 0) {
             data = data[..terminator];
         }
 
-        return Encoding.ASCII.GetString(data)
-            .Trim();
+        return Encoding.ASCII.GetString(data).Trim();
     }
 
     private static uint U32(ReadOnlySpan<byte> data, int offset) {

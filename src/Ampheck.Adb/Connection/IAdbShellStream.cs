@@ -16,6 +16,5 @@ public interface IAdbShellStream : IAsyncDisposable {
 
     Task ReadAsync(
         Action<string> output,
-        CancellationToken cancellationToken = default,
-        TimeSpan? readTimeout = null);
+        CancellationToken cancellationToken = default);
 }

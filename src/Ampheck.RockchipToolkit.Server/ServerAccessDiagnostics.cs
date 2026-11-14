@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Ampheck.Serial;
+using Ampheck.RockchipToolkit.Transport.Serial;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server;

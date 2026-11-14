@@ -11,6 +11,7 @@ internal static class DirectoryFlasher {
         ILogger logger,
         Func<string, ValueTask> report,
         Func<long, long, ValueTask>? progress,
+        Func<long, long, ValueTask>? eraseProgress,
         ToolkitTransferLimits limits,
         CancellationToken cancellationToken) {
         var source = FirmwareSource.Create(sourceLocation);
@@ -101,7 +102,9 @@ internal static class DirectoryFlasher {
                             ? null
                             : (written, _) => progress(
                                 completedBytes + written,
-                                totalBytes))
+                                totalBytes),
+                        eraseProgress,
+                        cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 completedBytes += imageLength;
             }

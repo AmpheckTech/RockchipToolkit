@@ -38,17 +38,17 @@ internal static class Application {
         try {
             if (args.Length == 0) {
                 WriteMotd(console);
-                CommandLine.PrintHelp(["--help"]);
+                CommandLine.PrintHelp(["--help"], Console.Out);
                 return 0;
             }
 
             if (args is ["--version"]) {
                 WriteMotd(console);
-                CommandLine.PrintVersion();
+                CommandLine.PrintVersion(Console.Out);
                 return 0;
             }
 
-            if (CommandLine.TryPrintCompletion(args)) {
+            if (CommandLine.TryPrintCompletion(args, Console.Out)) {
                 return 0;
             }
 
@@ -56,24 +56,27 @@ internal static class Application {
                 (IsHelpCommand(args[0]) ||
                     IsRootHelpOption(args[0]))) {
                 WriteMotd(console);
-                CommandLine.PrintHelp(["--help"]);
+                CommandLine.PrintHelp(["--help"], Console.Out);
                 return 0;
             }
 
             if (IsHelpCommand(args[0])) {
-                CommandLine.PrintHelp([
-                    .. args.Skip(1),
-                    "--help"
-                ]);
+                CommandLine.PrintHelp(
+                    [.. args.Skip(1), "--help"],
+                    Console.Out);
                 return 0;
             }
 
             if (HasOption(args, "--help", "-h", "-?")) {
-                CommandLine.PrintHelp(args);
+                CommandLine.PrintHelp(args, Console.Out);
                 return 0;
             }
 
-            var invocation = CommandLine.Parse(args);
+            var invocation = CommandLine.Parse(args, Console.Out);
+            if (invocation is null) {
+                return 0;
+            }
+
             var command = invocation.Command;
             var options = invocation.Options;
             if (command == CommandNames.Completion) {
@@ -123,6 +126,14 @@ internal static class Application {
                 await LocalServerManager.ShowStatusAsync(console)
                     .ConfigureAwait(false);
                 return 0;
+            }
+
+            if (command is CommandNames.ImageUnpack or CommandNames.ImagePack) {
+                return await ImageCommandRunner.RunAsync(
+                        command,
+                        options,
+                        console)
+                    .ConfigureAwait(false);
             }
 
             if (!worker.IsWorker &&

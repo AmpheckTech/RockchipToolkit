@@ -17,14 +17,17 @@ internal sealed record AdbEnvironment(
 
         if (string.IsNullOrWhiteSpace(server)) {
             return new AdbEnvironment(
-                new AdbClientOptions(),
+                new AdbClientOptions {
+                    Server = new AdbServerOptions {
+                        Port = GetConfiguredPort()
+                    }
+                },
                 Toolkit: null);
         }
 
         var endpoint = ToolkitEndpoint.Parse(server);
         return new AdbEnvironment(
             new AdbClientOptions {
-                Backend = AdbBackendPreference.AdbServer,
                 Server = new AdbServerOptions {
                     Host = endpoint.Host,
                     Port = GetConfiguredPort()

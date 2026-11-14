@@ -4,22 +4,31 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ampheck.RockchipToolkit.Protocol;
 
-/// <summary>Implements the RockUSB UFI-like bulk protocol without owning a USB backend.</summary>
+/// <summary>
+/// Implements Rockchip's UFI-style bulk protocol without owning a USB backend.
+/// </summary>
+/// <remarks>
+/// Command envelopes follow USB Mass Storage Bulk-Only Transport: a 31-byte
+/// Command Block Wrapper (CBW), optional data payload, then a 13-byte Command
+/// Status Wrapper (CSW). Rockchip opcodes occupy the CBW command bytes. The
+/// CBW and CSW signatures, tag, transfer length, and residue are little-endian;
+/// the RockUSB address and transfer count are big-endian.
+/// </remarks>
 public sealed class RockUsbProtocol : IDisposable {
     public const int SectorSize = 512;
     public const ushort MaxSectorsPerTransfer = ushort.MaxValue;
-    public const ushort MaxEraseBlocksPerTransfer = 16;
+    public const ushort MaxEraseBlocksPerTransfer = 16; // Vendor command limit.
 
-    private const int CbwLength = 31;
-    private const int CswLength = 13;
-    private const int MaxFlashInfoLength = 512;
-    private const uint CbwSignature = 0x43425355;
-    private const uint CswSignature = 0x53425355;
+    private const int CbwLength = 31; // Fixed Bulk-Only Transport CBW size.
+    private const int CswLength = 13; // Fixed Bulk-Only Transport CSW size.
+    private const int MaxFlashInfoLength = 512; // Maximum flash-info response.
+    private const uint CbwSignature = 0x43425355; // "USBC" in wire order.
+    private const uint CswSignature = 0x53425355; // "USBS" in wire order.
     private readonly IUsbTransport _transport;
     private readonly TimeSpan _timeout;
     private readonly ILogger<RockUsbProtocol> _logger;
     private readonly SemaphoreSlim _commandGate = new(1, 1);
-    private uint _tag = 0xA5A50000;
+    private uint _tag = 0xA5A50000; // Arbitrary nonzero CBW/CSW correlation tag.
     private bool _disposed;
 
     public RockUsbProtocol(
@@ -542,11 +551,14 @@ public sealed class RockUsbProtocol : IDisposable {
         byte lun,
         byte? subCode,
         uint tag) {
+        // CBW offsets: signature 0, tag 4, transfer length 8, flags 12,
+        // LUN 13, command length 14, opcode 15, subcode 16, address 17,
+        // transfer count 22. Offsets 24..30 are reserved and remain zero.
         var cbw = new byte[CbwLength];
         BinaryCodec.U32(cbw, 0, CbwSignature);
         BinaryCodec.U32(cbw, 4, tag);
         BinaryCodec.U32(cbw, 8, checked((uint)transferLength));
-        cbw[12] = readData ? (byte)0x80 : (byte)0;
+        cbw[12] = readData ? (byte)0x80 : (byte)0; // Direction: 1 = device-to-host.
         cbw[13] = lun;
         cbw[14] = RockUsbCommandPolicy.GetCommandBlockLength(operation);
         cbw[15] = (byte)operation;
@@ -560,6 +572,7 @@ public sealed class RockUsbProtocol : IDisposable {
         RockUsbOperation operation,
         ReadOnlySpan<byte> csw,
         uint tag) {
+        // CSW offsets: signature 0, tag 4, residue 8, status 12.
         var signature = BinaryCodec.U32(csw, 0);
         var returnedTag = BinaryCodec.U32(csw, 4);
         var residue = BinaryCodec.U32(csw, 8);

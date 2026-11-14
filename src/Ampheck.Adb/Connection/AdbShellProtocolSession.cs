@@ -14,18 +14,14 @@ internal sealed class AdbShellProtocolSession : IAdbShellStream {
     private const int MaximumPayloadLength = 16 * 1024 * 1024;
 
     private readonly Stream _stream;
-    private readonly TimeSpan? _readTimeout;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly Decoder _stdoutDecoder = Encoding.UTF8.GetDecoder();
     private readonly Decoder _stderrDecoder = Encoding.UTF8.GetDecoder();
     private bool _closed;
     private bool _disposed;
 
-    public AdbShellProtocolSession(
-        Stream stream,
-        TimeSpan? readTimeout = null) {
+    public AdbShellProtocolSession(Stream stream) {
         _stream = stream;
-        _readTimeout = readTimeout;
     }
 
     public ValueTask WriteAsync(
@@ -72,16 +68,13 @@ internal sealed class AdbShellProtocolSession : IAdbShellStream {
 
     public async Task ReadAsync(
         Action<string> output,
-        CancellationToken cancellationToken = default,
-        TimeSpan? readTimeout = null) {
+        CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(output);
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var timeout = readTimeout ?? _readTimeout;
         var header = new byte[HeaderLength];
         while (await TryReadExactlyAsync(
                 header,
-                timeout,
                 cancellationToken)
             .ConfigureAwait(false)) {
             var id = header[0];
@@ -95,7 +88,6 @@ internal sealed class AdbShellProtocolSession : IAdbShellStream {
             var payload = new byte[length];
             await ReadExactlyAsync(
                     payload,
-                    timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
             switch (id) {
@@ -174,13 +166,11 @@ internal sealed class AdbShellProtocolSession : IAdbShellStream {
 
     private async ValueTask<bool> TryReadExactlyAsync(
         Memory<byte> buffer,
-        TimeSpan? timeout,
         CancellationToken cancellationToken) {
         var offset = 0;
         while (offset < buffer.Length) {
-            var read = await ReadStreamAsync(
+            var read = await _stream.ReadAsync(
                     buffer[offset..],
-                    timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (read == 0) {
@@ -200,30 +190,14 @@ internal sealed class AdbShellProtocolSession : IAdbShellStream {
 
     private async ValueTask ReadExactlyAsync(
         Memory<byte> buffer,
-        TimeSpan? timeout,
         CancellationToken cancellationToken) {
         if (!await TryReadExactlyAsync(
                 buffer,
-                timeout,
                 cancellationToken)
             .ConfigureAwait(false)) {
             throw new EndOfStreamException(
                 "The ADB shell packet ended unexpectedly.");
         }
-    }
-
-    private ValueTask<int> ReadStreamAsync(
-        Memory<byte> buffer,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken) {
-        return _stream is AdbStream adbStream
-            ? adbStream.ReadAsync(
-                buffer,
-                timeout,
-                cancellationToken)
-            : _stream.ReadAsync(
-                buffer,
-                cancellationToken);
     }
 
     private static void WriteDecoded(

@@ -4,9 +4,8 @@ using System.Text;
 namespace Ampheck.RockchipToolkit.Images;
 
 internal static class RockchipImageReader {
-    private const int HeaderLength = 102;
+    private const int HeaderLength = RockchipImageLayout.RkfwHeaderSize;
     private const int BootEntryLength = 57;
-    private const uint ImageMagic = 0x57464B52;
     private const uint BootMagic = 0x544F4F42;
     private const uint LegacyBootMagic = 0x2052444C;
 
@@ -16,44 +15,78 @@ internal static class RockchipImageReader {
         (37, 38, 42, BootEntryType.Loader)
     ];
 
-    public static (RockchipImageHeader Header, IReadOnlyList<RockchipBootEntry> Entries) Read(FileStream stream) {
+    public static (
+        RockchipImageHeader Header,
+        RockchipImageKind BootKind,
+        ushort BootHeaderSize,
+        IReadOnlyList<RockchipBootEntry> Entries) Read(Stream stream) {
         if (stream.Length < HeaderLength) {
             throw new InvalidDataException("The file is too small to contain a Rockchip image header.");
         }
 
         Span<byte> header = stackalloc byte[HeaderLength];
-        StreamRange.ReadExactly(stream, header);
+        StreamRange.ReadExactly(stream, header, 0);
 
-        var imageHeader = U32(header, 0) switch {
-            ImageMagic => ReadFirmwareHeader(stream, header),
+        var magic = U32(header, 0);
+        if (RockchipNewIdbReader.IsMagic(magic)) {
+            var result = RockchipNewIdbReader.Read(stream, magic);
+            return (
+                result.Header,
+                result.Header.Kind,
+                result.Header.HeaderSize,
+                result.Entries);
+        }
+
+        var imageHeader = magic switch {
+            RockchipImageLayout.RkfwMagic => ReadFirmwareHeader(stream, header),
             BootMagic or LegacyBootMagic => ReadBootHeader(stream, header),
-            _ => throw new InvalidDataException("Invalid RKIMAGE or BOOT signature.")
+            _ => throw new InvalidDataException(
+                "Invalid RKIMAGE, BOOT, RKNS, or RKSS signature.")
         };
 
-        return (imageHeader, ReadBootEntries(stream, imageHeader));
+        var boot = ReadBootEntries(stream, imageHeader);
+        return (
+            imageHeader,
+            boot.Kind,
+            boot.HeaderSize,
+            boot.Entries);
     }
 
     private static RockchipImageHeader ReadFirmwareHeader(
-        FileStream stream,
+        Stream stream,
         ReadOnlySpan<byte> header) {
-        var headerSize = U16(header, 4);
+        var headerSize = U16(header, RockchipImageLayout.RkfwHeaderSizeOffset);
         if (headerSize < HeaderLength || headerSize > stream.Length) {
             throw new InvalidDataException("The RKIMAGE header size is invalid.");
         }
 
-        var bootOffset = U32(header, 25);
-        var bootSize = U32(header, 29);
-        var firmwareOffset = U32(header, 33);
-        var signed = header[55] == 'H' && header[56] == 'I';
+        var bootOffset = U32(header, RockchipImageLayout.RkfwBootOffsetOffset);
+        var bootSize = U32(header, RockchipImageLayout.RkfwBootSizeOffset);
+        var firmwareOffset = U32(header, RockchipImageLayout.RkfwUpdateOffsetOffset);
+        // RKFW header fields are little-endian. Offsets 0x19/0x1d hold the
+        // BOOT offset/size and 0x21/0x25 hold the embedded RKAF offset and
+        // the low 32 bits of its size. "HI" at 0x37 adds the high size word.
+        var signed =
+            header[RockchipImageLayout.RkfwSignedFlagOffset] == 'H' &&
+            header[RockchipImageLayout.RkfwSignedFlagOffset + 1] == 'I';
+        var firmwareEnd = HasTrailingMd5(stream)
+            ? stream.Length - 32
+            : stream.Length;
+        var available = firmwareEnd - firmwareOffset;
+        var storedFirmwareSize = U32(header, RockchipImageLayout.RkfwUpdateSizeOffset);
         var firmwareSize = signed
-            ? checked(((long)U32(header, 57) << 32) + U32(header, 37))
-            : U32(header, 37);
+            ? checked(
+                ((long)U32(header, RockchipImageLayout.RkfwUpdateSizeHighOffset) << 32) +
+                storedFirmwareSize)
+            : RockchipImageLayout.RecoverUInt32Value(
+                storedFirmwareSize,
+                available);
 
         StreamRange.Validate(stream.Length, bootOffset, bootSize, "boot");
         StreamRange.Validate(stream.Length, firmwareOffset, firmwareSize, "firmware");
 
         return new RockchipImageHeader(
-            U32(header, 6),
+            U32(header, RockchipImageLayout.RkfwVersionOffset),
             U32(header, 10),
             headerSize,
             bootOffset,
@@ -65,8 +98,24 @@ internal static class RockchipImageReader {
             RockchipImageKind.Firmware);
     }
 
+    public static bool HasTrailingMd5(Stream stream) {
+        if (stream.Length < 32) {
+            return false;
+        }
+
+        Span<byte> tail = stackalloc byte[32];
+        StreamRange.ReadExactly(stream, tail, stream.Length - 32);
+        foreach (var value in tail) {
+            if (!Uri.IsHexDigit((char)value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static RockchipImageHeader ReadBootHeader(
-        FileStream stream,
+        Stream stream,
         ReadOnlySpan<byte> header) {
         if (stream.Length > uint.MaxValue) {
             throw new InvalidDataException("Standalone BOOT images larger than 4 GiB are not supported.");
@@ -90,13 +139,19 @@ internal static class RockchipImageReader {
             RockchipImageKind.Boot);
     }
 
-    private static IReadOnlyList<RockchipBootEntry> ReadBootEntries(
-        FileStream stream,
+    private static (
+        RockchipImageKind Kind,
+        ushort HeaderSize,
+        IReadOnlyList<RockchipBootEntry> Entries) ReadBootEntries(
+        Stream stream,
         RockchipImageHeader header) {
         if (header.BootSize < HeaderLength ||
             header.BootOffset > stream.Length ||
             header.BootSize > stream.Length - header.BootOffset) {
-            return Array.Empty<RockchipBootEntry>();
+            return (
+                RockchipImageKind.Boot,
+                HeaderLength,
+                Array.Empty<RockchipBootEntry>());
         }
 
         if (header.BootSize > int.MaxValue) {
@@ -105,8 +160,21 @@ internal static class RockchipImageReader {
 
         var data = new byte[checked((int)header.BootSize)];
         StreamRange.ReadExactly(stream, data, header.BootOffset);
-        if (U32(data, 0) is not (BootMagic or LegacyBootMagic)) {
-            return Array.Empty<RockchipBootEntry>();
+        var magic = U32(data, 0);
+        if (RockchipNewIdbReader.IsMagic(magic)) {
+            using var boot = new MemoryStream(data, writable: false);
+            var result = RockchipNewIdbReader.Read(boot, magic);
+            return (
+                result.Header.Kind,
+                result.Header.HeaderSize,
+                result.Entries);
+        }
+
+        if (magic is not (BootMagic or LegacyBootMagic)) {
+            return (
+                RockchipImageKind.Boot,
+                HeaderLength,
+                Array.Empty<RockchipBootEntry>());
         }
 
         var entryCount = data[25] + data[31] + data[37];
@@ -115,7 +183,10 @@ internal static class RockchipImageReader {
             ReadTable(data, table, entries);
         }
 
-        return entries.AsReadOnly();
+        return (
+            RockchipImageKind.Boot,
+            U16(data, 4),
+            entries.AsReadOnly());
     }
 
     private static void ReadTable(

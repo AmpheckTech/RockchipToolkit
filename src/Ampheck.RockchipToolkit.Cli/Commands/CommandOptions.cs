@@ -47,4 +47,8 @@ internal sealed class CommandOptions {
     public ToolkitStorage? Storage { get; set; }
     public bool EraseBeforeWrite { get; set; } = true;
     public bool ResetAfterFlash { get; set; } = true;
+    public string? ImageInput { get; set; }
+    public string? ImageOutput { get; set; }
+    public bool ImageForce { get; set; }
+    public string? ImageChip { get; set; }
 }

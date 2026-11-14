@@ -19,7 +19,8 @@ public static class ToolkitOperationNames {
             [ToolkitOperation.SerialOpen] = "serial.open",
             [ToolkitOperation.SerialClose] = "serial.close",
             [ToolkitOperation.SerialTerminal] = "serial.terminal",
-            [ToolkitOperation.SerialHistory] = "serial.history"
+            [ToolkitOperation.SerialHistory] = "serial.history",
+            [ToolkitOperation.AdbServerEnsure] = "adb.server_ensure"
         };
 
     private static readonly IReadOnlyDictionary<string, ToolkitOperation> Operations =

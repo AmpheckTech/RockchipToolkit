@@ -19,6 +19,10 @@ internal static class AdbCommandRunner {
         try {
             var environment = AdbEnvironment.Resolve(
                 options.ServerEndpoint);
+            await AdbServerLauncher.EnsureStartedAsync(
+                    environment.Toolkit)
+                .ConfigureAwait(false);
+
             var client = new AdbClient(
                 environment.Client,
                 loggerFactory: loggerFactory);
@@ -71,7 +75,6 @@ internal static class AdbCommandRunner {
         CommandOptions options) {
         var devices = await client.GetDevicesAsync()
             .ConfigureAwait(false);
-        EnsureUsbFilterSupported(devices, options);
         foreach (var device in FilterDevices(devices, options)) {
             var identity = FormatIdentity(device);
             Console.WriteLine(
@@ -192,9 +195,8 @@ internal static class AdbCommandRunner {
                 options)
             .ConfigureAwait(false);
         logger.LogInformation(
-            "Using ADB device {SerialNumber} via {Backend}",
-            device.SerialNumber,
-            device.Backend);
+            "Using ADB device {SerialNumber}",
+            device.SerialNumber);
         if (options.AdbShellCommand is null &&
             options.AdbShellArguments.Length == 0) {
             await using var shell = await device.OpenShellAsync()
@@ -346,7 +348,6 @@ internal static class AdbCommandRunner {
         CommandOptions options) {
         var devices = await client.GetDevicesAsync()
             .ConfigureAwait(false);
-        EnsureUsbFilterSupported(devices, options);
         var matching = FilterDevices(devices, options).ToArray();
         if (matching.Length == 0) {
             throw new InvalidOperationException(
@@ -365,27 +366,10 @@ internal static class AdbCommandRunner {
         IEnumerable<AdbDevice> devices,
         CommandOptions options) {
         return devices.Where(device =>
-            (!options.VendorId.HasValue ||
-                device.VendorId == options.VendorId) &&
-            (!options.ProductId.HasValue ||
-                device.ProductId == options.ProductId) &&
-            (options.AdbSerial is null ||
-                device.SerialNumber.Equals(
-                    options.AdbSerial,
-                    StringComparison.OrdinalIgnoreCase)));
-    }
-
-    private static void EnsureUsbFilterSupported(
-        IEnumerable<AdbDevice> devices,
-        CommandOptions options) {
-        if ((options.VendorId.HasValue ||
-                options.ProductId.HasValue) &&
-            devices.Any(device =>
-                device.Backend == AdbDeviceBackend.AdbServer)) {
-            throw new InvalidOperationException(
-                "VID/PID filtering is unavailable through the ADB server. " +
-                "Use --serial or stop the ADB server.");
-        }
+            options.AdbSerial is null ||
+            device.SerialNumber.Equals(
+                options.AdbSerial,
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static string FormatDetails(AdbDevice device) {
@@ -399,20 +383,7 @@ internal static class AdbCommandRunner {
     }
 
     private static string FormatIdentity(AdbDevice device) {
-        if (!device.VendorId.HasValue ||
-            !device.ProductId.HasValue) {
-            return FormatDetails(device);
-        }
-
-        var vendorId = device.VendorId.Value;
-        var productId = device.ProductId.Value;
-        var known = RockchipUsbCatalog.Resolve(
-            vendorId,
-            productId);
-        return known is null
-            ? $"{vendorId:X4}:{productId:X4}"
-            : $"{vendorId:X4}:{productId:X4} " +
-              $"{known.Family} {known.Description}";
+        return FormatDetails(device);
     }
 
     private static string? FormatField(
