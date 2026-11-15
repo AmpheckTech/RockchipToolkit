@@ -12,6 +12,7 @@ public sealed partial class ToolkitRpcClient : IAsyncDisposable {
     private readonly ToolkitEndpoint _endpoint;
     private readonly string? _token;
     private readonly string _clientName;
+    private readonly ToolkitFileAccessMode _fileAccess;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly ConcurrentDictionary<string, PendingCall> _calls =
@@ -24,14 +25,22 @@ public sealed partial class ToolkitRpcClient : IAsyncDisposable {
     public ToolkitRpcClient(
         ToolkitEndpoint endpoint,
         string? token = null,
-        string? clientName = null) {
+        string? clientName = null,
+        ToolkitFileAccessMode fileAccess = ToolkitFileAccessMode.Auto) {
         _endpoint = endpoint ??
             throw new ArgumentNullException(nameof(endpoint));
         _token = token;
+        _fileAccess = fileAccess;
         _clientName = string.IsNullOrWhiteSpace(clientName)
             ? Environment.MachineName
             : clientName.Trim();
     }
+
+    public bool UseServerPaths => _fileAccess switch {
+        ToolkitFileAccessMode.Server => true,
+        ToolkitFileAccessMode.Upload => false,
+        _ => _endpoint.IsLoopback
+    };
 
     public async ValueTask<TResult> RequestAsync<TParams, TResult>(
         string method,

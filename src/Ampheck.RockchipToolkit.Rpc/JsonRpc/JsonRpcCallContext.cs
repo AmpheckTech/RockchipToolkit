@@ -4,6 +4,7 @@ public sealed class JsonRpcCallContext {
     public required string RequestId { get; init; }
     public required string TaskId { get; init; }
     public required ClientInfo Client { get; init; }
+    public bool IsLocalClient { get; init; }
     public required CancellationToken CancellationToken { get; init; }
     public required Func<TaskEventNotification, ValueTask> Report { get; init; }
 

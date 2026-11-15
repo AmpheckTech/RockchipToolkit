@@ -27,7 +27,10 @@ internal static partial class AdbCommandRunner {
         await using var client = new ToolkitRpcClient(
             endpoint,
             token,
-            clientName);
+            clientName,
+            ToolkitFileAccess.Parse(
+                Environment.GetEnvironmentVariable(
+                    "ARKT_FILE_MODE")));
         using var printer = new ToolkitEventPrinter(console);
         void ReportEvent(TaskEventNotification value) {
             printer.Write(value);

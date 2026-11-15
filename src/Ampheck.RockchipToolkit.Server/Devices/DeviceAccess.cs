@@ -2,6 +2,7 @@ using Ampheck.RockchipToolkit.Device;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
 using Ampheck.RockchipToolkit.Server.Firmware;
+using Ampheck.RockchipToolkit.Server.Rpc;
 using Ampheck.RockchipToolkit.Transport;
 using Microsoft.Extensions.Logging;
 
@@ -15,8 +16,7 @@ internal sealed class DeviceAccess(
 
     public async ValueTask<RockchipDeviceLease> OpenAsync(
         DeviceTarget target,
-        string? loaderBlobId,
-        string? loaderUrl,
+        DeviceLoaderInput loader,
         JsonRpcCallContext context,
         bool useEmbeddedLoader = false,
         string? firmwarePath = null) {
@@ -25,12 +25,10 @@ internal sealed class DeviceAccess(
             .ConfigureAwait(false);
         var logger = loggerFactory.CreateLogger<DeviceAccess>();
         try {
-            if (!string.IsNullOrWhiteSpace(loaderBlobId) ||
-                !string.IsNullOrWhiteSpace(loaderUrl)) {
+            if (!loader.IsEmpty) {
                 await DownloadLoaderAsync(
                         target,
-                        loaderBlobId,
-                        loaderUrl,
+                        loader,
                         logger,
                         context)
                     .ConfigureAwait(false);
@@ -46,8 +44,10 @@ internal sealed class DeviceAccess(
                         "MaskROM detected; using the update image loader");
                     await DownloadLoaderAsync(
                             target,
-                            loaderBlobId: null,
-                            loaderUrl: firmwarePath,
+                        new DeviceLoaderInput(
+                            BlobId: null,
+                            Url: firmwarePath,
+                            ServerPath: null),
                             logger,
                             context)
                         .ConfigureAwait(false);
@@ -75,13 +75,17 @@ internal sealed class DeviceAccess(
 
     private async Task DownloadLoaderAsync(
         DeviceTarget target,
-        string? loaderBlobId,
-        string? loaderUrl,
+        DeviceLoaderInput loader,
         ILogger logger,
         JsonRpcCallContext context) {
-        var location = !string.IsNullOrWhiteSpace(loaderBlobId)
-            ? blobs.Get(loaderBlobId).Path
-            : loaderUrl;
+        var location = loader.ServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                loader.ServerPath,
+                "Loader")
+            : !string.IsNullOrWhiteSpace(loader.BlobId)
+                ? blobs.Get(loader.BlobId).Path
+                : loader.Url;
         if (string.IsNullOrWhiteSpace(location)) {
             throw new InvalidDataException(
                 "The loader input is missing.");
@@ -120,6 +124,16 @@ internal sealed class DeviceAccess(
                 context.CancellationToken)
             .ConfigureAwait(false);
     }
+}
+
+internal sealed record DeviceLoaderInput(
+    string? BlobId,
+    string? Url,
+    string? ServerPath) {
+    public bool IsEmpty =>
+        string.IsNullOrWhiteSpace(BlobId) &&
+        string.IsNullOrWhiteSpace(Url) &&
+        string.IsNullOrWhiteSpace(ServerPath);
 }
 
 internal sealed class RockchipDeviceLease(

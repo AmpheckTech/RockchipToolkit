@@ -9,7 +9,7 @@ namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 internal static class BlobOutput {
     public static async Task WriteAsync(
         ToolkitRpcClient client,
-        BlobReference blob,
+        FileReference file,
         string destination,
         ConsoleRenderer console,
         ILogger logger,
@@ -19,6 +19,11 @@ internal static class BlobOutput {
                 UriKind.Absolute,
                 out var uri) ||
             uri.Scheme is not ("http" or "https")) {
+            if (file.Path is not null) {
+                return;
+            }
+
+            var blob = ToBlob(file);
             using var progress = CreateProgress(
                 console,
                 blob.FileName,
@@ -36,6 +41,7 @@ internal static class BlobOutput {
             Path.GetTempPath(),
             $"arkt-output-{Guid.NewGuid():N}.bin");
         try {
+            var blob = ToBlob(file);
             using (var progress = CreateProgress(
                 console,
                 blob.FileName,
@@ -84,8 +90,25 @@ internal static class BlobOutput {
 
     public static async Task CopyToStandardOutputAsync(
         ToolkitRpcClient client,
-        BlobReference blob,
+        FileReference file,
         CancellationToken cancellationToken = default) {
+        if (file.Path is not null) {
+            await using var local = new FileStream(
+                file.Path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                128 * 1024,
+                FileOptions.Asynchronous |
+                FileOptions.SequentialScan);
+            await local.CopyToAsync(
+                    Console.OpenStandardOutput(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var blob = ToBlob(file);
         var temporary = Path.Combine(
             Path.GetTempPath(),
             $"arkt-history-{Guid.NewGuid():N}.bin");
@@ -119,6 +142,18 @@ internal static class BlobOutput {
         console.IsInteractive && total > 0
             ? new ProgressBar(console, label, total)
             : null;
+
+    private static BlobReference ToBlob(
+        FileReference file) {
+        return new BlobReference {
+            BlobId = file.BlobId ??
+                throw new InvalidDataException(
+                    "The server returned no blob or local file."),
+            FileName = file.FileName,
+            Length = file.Length,
+            Sha256 = file.Sha256
+        };
+    }
 
     private static void TryDelete(string path) {
         try {

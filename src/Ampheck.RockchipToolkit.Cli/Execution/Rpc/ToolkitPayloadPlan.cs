@@ -30,17 +30,41 @@ internal sealed class ToolkitPayloadPlan : IAsyncDisposable {
         CancellationToken cancellationToken) {
         if (IsHttpLocation(location)) {
             if (fetchLocation != InputFetchLocation.Client) {
-                return new PayloadReference(null, location);
+                return new PayloadReference(
+                    BlobId: null,
+                    Url: location,
+                    ServerPath: null);
             }
 
             var downloaded = await FetchAsync(
                     location,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (_client.UseServerPaths) {
+                return new PayloadReference(
+                    BlobId: null,
+                    Url: null,
+                    ServerPath: Path.GetFullPath(downloaded));
+            }
+
             return await UploadAsync(
                     downloaded,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        if (_client.UseServerPaths) {
+            if (!Directory.Exists(location) &&
+                !File.Exists(location)) {
+                throw new FileNotFoundException(
+                    $"Firmware source '{location}' was not found.",
+                    location);
+            }
+
+            return new PayloadReference(
+                BlobId: null,
+                Url: null,
+                ServerPath: Path.GetFullPath(location));
         }
 
         if (Directory.Exists(location)) {
@@ -68,17 +92,40 @@ internal sealed class ToolkitPayloadPlan : IAsyncDisposable {
         CancellationToken cancellationToken) {
         if (IsHttpLocation(location)) {
             if (fetchLocation != InputFetchLocation.Client) {
-                return new PayloadReference(null, location);
+                return new PayloadReference(
+                    BlobId: null,
+                    Url: location,
+                    ServerPath: null);
             }
 
             var downloaded = await FetchAsync(
                     location,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (_client.UseServerPaths) {
+                return new PayloadReference(
+                    BlobId: null,
+                    Url: null,
+                    ServerPath: Path.GetFullPath(downloaded));
+            }
+
             return await UploadAsync(
                     downloaded,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        if (_client.UseServerPaths) {
+            if (!File.Exists(location)) {
+                throw new FileNotFoundException(
+                    $"Input file '{location}' was not found.",
+                    location);
+            }
+
+            return new PayloadReference(
+                BlobId: null,
+                Url: null,
+                ServerPath: Path.GetFullPath(location));
         }
 
         if (!File.Exists(location)) {
@@ -119,7 +166,10 @@ internal sealed class ToolkitPayloadPlan : IAsyncDisposable {
                 cancellationToken)
             .ConfigureAwait(false);
         _blobIds.Add(blob.BlobId);
-        return new PayloadReference(blob.BlobId, null);
+        return new PayloadReference(
+            blob.BlobId,
+            Url: null,
+            ServerPath: null);
     }
 
     private async ValueTask<string> FetchAsync(
@@ -211,4 +261,5 @@ internal sealed class ToolkitPayloadPlan : IAsyncDisposable {
 
 internal sealed record PayloadReference(
     string? BlobId,
-    string? Url);
+    string? Url,
+    string? ServerPath);

@@ -5,6 +5,10 @@ public sealed record ToolkitEndpoint(
     int Port,
     string Path = "/api/rpc") {
     public Uri Uri => new UriBuilder("ws", Host, Port, Path).Uri;
+    public bool IsLoopback =>
+        Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+        System.Net.IPAddress.TryParse(Host, out var address) &&
+        System.Net.IPAddress.IsLoopback(address);
     public Uri HttpUri(string path) =>
         new UriBuilder("http", Host, Port, path).Uri;
     public string HostPort =>

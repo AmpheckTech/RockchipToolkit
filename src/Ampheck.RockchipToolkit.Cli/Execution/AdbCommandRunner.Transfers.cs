@@ -38,26 +38,35 @@ internal static partial class AdbCommandRunner {
                     Path.GetFileName(source),
                     length)
                 : null;
-        logger.LogInformation(
-            "Uploading {LocalPath} for ADB push",
-            source);
-        var blob = await client.UploadBlobAsync(
-                source,
-                progress)
-            .ConfigureAwait(false);
+        BlobReference? blob = null;
+        if (!client.UseServerPaths) {
+            logger.LogInformation(
+                "Uploading {LocalPath} for ADB push",
+                source);
+            blob = await client.UploadBlobAsync(
+                    source,
+                    progress)
+                .ConfigureAwait(false);
+        }
+
         try {
             await client.RequestAsync<AdbPushParams, EmptyResult>(
                     JsonRpcMethods.AdbPush,
                     new AdbPushParams {
                         SerialNumber = options.AdbSerial,
-                        BlobId = blob.BlobId,
+                        BlobId = blob?.BlobId,
+                        ServerPath = client.UseServerPaths
+                            ? Path.GetFullPath(source)
+                            : null,
                         Destination = destination
                     },
                     report)
                 .ConfigureAwait(false);
         } finally {
-            await client.DeleteBlobAsync(blob.BlobId)
-                .ConfigureAwait(false);
+            if (blob is not null) {
+                await client.DeleteBlobAsync(blob.BlobId)
+                    .ConfigureAwait(false);
+            }
         }
 
         Console.WriteLine($"pushed {source} -> {destination}");
@@ -76,38 +85,50 @@ internal static partial class AdbCommandRunner {
         var destination = RequireTransferPath(
             options.AdbDestination,
             "local destination");
-        var blob = await client.RequestAsync<
+        var file = await client.RequestAsync<
             AdbPullParams,
-            BlobReference>(
+            FileReference>(
                 JsonRpcMethods.AdbPull,
                 new AdbPullParams {
                     SerialNumber = options.AdbSerial,
-                    Source = source
+                    Source = source,
+                    DestinationServerPath = client.UseServerPaths
+                        ? Path.GetFullPath(destination)
+                        : null
                 },
                 report)
             .ConfigureAwait(false);
         try {
-            if (Directory.Exists(destination) ||
-                Path.EndsInDirectorySeparator(destination)) {
+            if (file.BlobId is not null &&
+                (Directory.Exists(destination) ||
+                    Path.EndsInDirectorySeparator(destination))) {
                 Directory.CreateDirectory(destination);
                 destination = Path.Combine(
                     destination,
-                    blob.FileName);
+                    file.FileName);
             }
 
-            logger.LogInformation(
-                "Downloading ADB pull result to {LocalPath}",
-                destination);
-            await BlobOutput.WriteAsync(
-                    client,
-                    blob,
-                    destination,
-                    console,
-                    logger)
-                .ConfigureAwait(false);
+            if (file.BlobId is not null) {
+                logger.LogInformation(
+                    "Downloading ADB pull result to {LocalPath}",
+                    destination);
+                await BlobOutput.WriteAsync(
+                        client,
+                        file,
+                        destination,
+                        console,
+                        logger)
+                    .ConfigureAwait(false);
+            } else {
+                destination = file.Path ??
+                    throw new InvalidDataException(
+                        "The server returned no pull destination.");
+            }
         } finally {
-            await client.DeleteBlobAsync(blob.BlobId)
-                .ConfigureAwait(false);
+            if (file.BlobId is { } blobId) {
+                await client.DeleteBlobAsync(blobId)
+                    .ConfigureAwait(false);
+            }
         }
 
         Console.WriteLine($"pulled {source} -> {destination}");

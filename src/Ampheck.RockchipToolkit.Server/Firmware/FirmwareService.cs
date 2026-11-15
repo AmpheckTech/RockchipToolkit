@@ -2,6 +2,7 @@ using Ampheck.RockchipToolkit.Protocol;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
 using Ampheck.RockchipToolkit.Server.Devices;
+using Ampheck.RockchipToolkit.Server.Rpc;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
@@ -17,10 +18,14 @@ internal sealed class FirmwareService(
     public async ValueTask<EmptyResult> FlashAsync(
         FirmwareFlashParams parameters,
         JsonRpcCallContext context) {
-        var location = !string.IsNullOrWhiteSpace(
-                parameters.FirmwareBlobId)
-            ? blobs.Get(parameters.FirmwareBlobId).Path
-            : parameters.FirmwareUrl;
+        var location = parameters.FirmwareServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                parameters.FirmwareServerPath,
+                "Firmware")
+            : !string.IsNullOrWhiteSpace(parameters.FirmwareBlobId)
+                ? blobs.Get(parameters.FirmwareBlobId).Path
+                : parameters.FirmwareUrl;
         if (string.IsNullOrWhiteSpace(location)) {
             throw new InvalidDataException(
                 "The flash request contains no firmware source.");
@@ -40,8 +45,10 @@ internal sealed class FirmwareService(
             .ConfigureAwait(false);
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context,
                 useEmbeddedLoader:
                     input.SourceKind == FlashSourceKind.UpdateImage,

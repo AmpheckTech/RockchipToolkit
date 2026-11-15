@@ -15,6 +15,7 @@ namespace Ampheck.RockchipToolkit.Rpc.JsonRpc;
 [JsonSerializable(typeof(DeviceTarget))]
 [JsonSerializable(typeof(TextResult))]
 [JsonSerializable(typeof(BlobReference))]
+[JsonSerializable(typeof(FileReference))]
 [JsonSerializable(typeof(ClientInfo))]
 [JsonSerializable(typeof(DeviceListParams))]
 [JsonSerializable(typeof(DeviceDescriptor))]
@@ -69,5 +70,5 @@ namespace Ampheck.RockchipToolkit.Rpc.JsonRpc;
 [JsonSerializable(typeof(ToolkitSerialStopBits))]
 [JsonSerializable(typeof(ToolkitSerialHandshake))]
 [JsonSerializable(typeof(ToolkitAdbRebootMode))]
-internal sealed partial class ToolkitJsonSerializerContext :
+public sealed partial class ToolkitJsonSerializerContext :
     JsonSerializerContext;

@@ -1,5 +1,6 @@
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
+using Ampheck.RockchipToolkit.Server.Rpc;
 
 namespace Ampheck.RockchipToolkit.Server.Serial;
 
@@ -53,12 +54,33 @@ internal sealed class SerialService(
     }
 
     [JsonRpcMethod(JsonRpcMethods.SerialHistory)]
-    public async ValueTask<BlobReference> HistoryAsync(
+    public async ValueTask<FileReference> HistoryAsync(
         SerialHistoryParams parameters,
         JsonRpcCallContext context) {
         var history = serial.GetHistory(parameters);
-        return await blobs.CreateAsync(
-                $"{Path.GetFileName(parameters.PortName)}-history.bin",
+        var fileName =
+            $"{Path.GetFileName(parameters.PortName)}-history.bin";
+        if (parameters.OutputServerPath is not null) {
+            var path = RpcFileAccess.RequireServerPath(
+                context,
+                parameters.OutputServerPath,
+                "Serial history output");
+            if (Directory.Exists(path)) {
+                path = Path.Combine(path, fileName);
+            }
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(path)!);
+            await File.WriteAllBytesAsync(
+                    path,
+                    history,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            return RpcFileAccess.CreateFileReference(path);
+        }
+
+        var blob = await blobs.CreateAsync(
+                fileName,
                 (destination, cancellationToken) =>
                     destination.WriteAsync(
                             history,
@@ -66,6 +88,7 @@ internal sealed class SerialService(
                         .AsTask(),
                 context.CancellationToken)
             .ConfigureAwait(false);
+        return RpcFileAccess.CreateFileReference(blob);
     }
 
     [JsonRpcMethod(JsonRpcMethods.SerialTerminal)]

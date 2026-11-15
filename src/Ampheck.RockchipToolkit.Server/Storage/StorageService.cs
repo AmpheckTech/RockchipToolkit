@@ -4,6 +4,7 @@ using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
 using Ampheck.RockchipToolkit.Server.Devices;
 using Ampheck.RockchipToolkit.Server.Firmware;
+using Ampheck.RockchipToolkit.Server.Rpc;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Storage;
@@ -16,7 +17,7 @@ internal sealed class StorageService(
     ILoggerFactory loggerFactory) {
 
     [JsonRpcMethod(JsonRpcMethods.StorageRead, longRunning: true)]
-    public async ValueTask<BlobReference> ReadAsync(
+    public async ValueTask<FileReference> ReadAsync(
         StorageReadParams parameters,
         JsonRpcCallContext context) {
         if (parameters.Count == 0) {
@@ -26,8 +27,10 @@ internal sealed class StorageService(
 
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         await context.StatusAsync(
@@ -39,8 +42,28 @@ internal sealed class StorageService(
                 parameters.Count,
                 context.CancellationToken)
             .ConfigureAwait(false);
-        return await blobs.CreateAsync(
-                $"read-{parameters.Sector:X8}.bin",
+        var fileName = $"read-{parameters.Sector:X8}.bin";
+        if (parameters.OutputServerPath is not null) {
+            var path = RpcFileAccess.RequireServerPath(
+                context,
+                parameters.OutputServerPath,
+                "Storage output");
+            if (Directory.Exists(path)) {
+                path = Path.Combine(path, fileName);
+            }
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(path)!);
+            await File.WriteAllBytesAsync(
+                    path,
+                    data,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            return RpcFileAccess.CreateFileReference(path);
+        }
+
+        var blob = await blobs.CreateAsync(
+                fileName,
                 (destination, cancellationToken) =>
                     destination.WriteAsync(
                             data,
@@ -48,13 +71,15 @@ internal sealed class StorageService(
                         .AsTask(),
                 context.CancellationToken)
             .ConfigureAwait(false);
+        return RpcFileAccess.CreateFileReference(blob);
     }
 
     [JsonRpcMethod(JsonRpcMethods.StorageWrite, longRunning: true)]
     public async ValueTask<StorageWriteResult> WriteAsync(
         StorageWriteParams parameters,
         JsonRpcCallContext context) {
-        if (string.IsNullOrWhiteSpace(parameters.BlobId) &&
+        if (string.IsNullOrWhiteSpace(parameters.ServerPath) &&
+            string.IsNullOrWhiteSpace(parameters.BlobId) &&
             string.IsNullOrWhiteSpace(parameters.SourceUrl)) {
             throw new InvalidDataException(
                 "The write request contains no input.");
@@ -62,9 +87,14 @@ internal sealed class StorageService(
 
         var logger = loggerFactory.CreateLogger<StorageService>();
         InputFile? downloaded = null;
-        var path = parameters.BlobId is { } blobId
-            ? blobs.Get(blobId).Path
-            : null;
+        var path = parameters.ServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                parameters.ServerPath,
+                "Storage input")
+            : parameters.BlobId is { } blobId
+                ? blobs.Get(blobId).Path
+                : null;
         if (path is null) {
             downloaded = await InputFile.OpenAsync(
                     parameters.SourceUrl!,
@@ -85,16 +115,28 @@ internal sealed class StorageService(
         var length = parameters.Length ??
             checked(inputLength - sourceOffset);
         ValidateWrite(inputLength, sourceOffset, length);
-        string? backupPath = parameters.Backup
-            ? Path.Combine(
-                Path.GetTempPath(),
-                $"ampheck-backup-{Guid.NewGuid():N}.bin")
-            : null;
+        var backupPath = parameters.BackupServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                parameters.BackupServerPath,
+                "Storage backup")
+            : parameters.Backup
+                ? Path.Combine(
+                    Path.GetTempPath(),
+                    $"ampheck-backup-{Guid.NewGuid():N}.bin")
+                : null;
+        var temporaryBackup = parameters.BackupServerPath is null;
+        if (parameters.BackupServerPath is not null) {
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(backupPath!)!);
+        }
         try {
             await using var lease = await access.OpenAsync(
                     parameters.Target,
-                    parameters.LoaderBlobId,
-                    parameters.LoaderUrl,
+                        new DeviceLoaderInput(
+                            parameters.LoaderBlobId,
+                            parameters.LoaderUrl,
+                            parameters.LoaderServerPath),
                     context)
                 .ConfigureAwait(false);
             await FirmwareWriter.WriteAsync(
@@ -117,26 +159,32 @@ internal sealed class StorageService(
                     sourceOffset,
                     context.CancellationToken)
                 .ConfigureAwait(false);
-            BlobReference? backup = null;
+            FileReference? backup = null;
             if (backupPath is not null) {
-                backup = await blobs.CreateAsync(
-                        $"backup-{parameters.Sector:X8}.bin",
-                        async (destination, cancellationToken) => {
-                            await using var source = new FileStream(
-                                backupPath,
-                                FileMode.Open,
-                                FileAccess.Read,
-                                FileShare.Read,
-                                128 * 1024,
-                                FileOptions.Asynchronous |
-                                FileOptions.SequentialScan);
-                            await source.CopyToAsync(
-                                    destination,
-                                    cancellationToken)
-                                .ConfigureAwait(false);
-                        },
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
+                if (parameters.BackupServerPath is not null) {
+                    backup = RpcFileAccess.CreateFileReference(
+                        backupPath);
+                } else {
+                    var blob = await blobs.CreateAsync(
+                            $"backup-{parameters.Sector:X8}.bin",
+                            async (destination, cancellationToken) => {
+                                await using var source = new FileStream(
+                                    backupPath,
+                                    FileMode.Open,
+                                    FileAccess.Read,
+                                    FileShare.Read,
+                                    128 * 1024,
+                                    FileOptions.Asynchronous |
+                                    FileOptions.SequentialScan);
+                                await source.CopyToAsync(
+                                        destination,
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                            },
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    backup = RpcFileAccess.CreateFileReference(blob);
+                }
             }
 
             return new StorageWriteResult {
@@ -149,7 +197,7 @@ internal sealed class StorageService(
                     .ConfigureAwait(false);
             }
 
-            if (backupPath is not null) {
+            if (temporaryBackup && backupPath is not null) {
                 TryDelete(backupPath);
             }
         }
@@ -166,8 +214,10 @@ internal sealed class StorageService(
 
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         await context.StatusAsync(
@@ -192,8 +242,10 @@ internal sealed class StorageService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         await lease.Device.ChangeStorageAsync(

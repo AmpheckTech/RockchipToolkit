@@ -23,13 +23,15 @@ public sealed record AdbShellParams {
 
 public sealed record AdbPushParams {
     public string? SerialNumber { get; init; }
-    public required string BlobId { get; init; }
+    public string? BlobId { get; init; }
+    public string? ServerPath { get; init; }
     public required string Destination { get; init; }
 }
 
 public sealed record AdbPullParams {
     public string? SerialNumber { get; init; }
     public required string Source { get; init; }
+    public string? DestinationServerPath { get; init; }
 }
 
 public sealed record AdbRebootParams {

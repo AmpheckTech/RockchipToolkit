@@ -94,25 +94,34 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        var blob = await client.RequestAsync<
+        var file = await client.RequestAsync<
             SerialHistoryParams,
-            BlobReference>(
+            FileReference>(
                 JsonRpcMethods.SerialHistory,
                 new SerialHistoryParams {
                     PortName = RequireSerialPort(options),
                     MaximumBytes = options.SerialHistoryBytes ??
-                        256 * 1024
+                        256 * 1024,
+                    OutputServerPath = client.UseServerPaths
+                        ? Path.Combine(
+                            Path.GetTempPath(),
+                            $"arkt-serial-history-{Guid.NewGuid():N}.bin")
+                        : null
                 },
                 report)
             .ConfigureAwait(false);
         try {
             await BlobOutput.CopyToStandardOutputAsync(
                     client,
-                    blob)
+                    file)
                 .ConfigureAwait(false);
         } finally {
-            await client.DeleteBlobAsync(blob.BlobId)
-                .ConfigureAwait(false);
+            if (file.BlobId is { } blobId) {
+                await client.DeleteBlobAsync(blobId)
+                    .ConfigureAwait(false);
+            } else if (file.Path is { } path) {
+                TryDelete(path);
+            }
         }
 
         return 0;
@@ -206,6 +215,14 @@ internal static partial class ToolkitClientCommandRunner {
             await task.ConfigureAwait(false);
         } catch (OperationCanceledException) {
         } catch (WebSocketException) {
+        }
+    }
+
+    private static void TryDelete(string path) {
+        try {
+            File.Delete(path);
+        } catch (Exception error) when (
+            error is IOException or UnauthorizedAccessException) {
         }
     }
 }

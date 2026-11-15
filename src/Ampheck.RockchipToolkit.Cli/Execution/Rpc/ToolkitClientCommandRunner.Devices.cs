@@ -39,7 +39,8 @@ internal static partial class ToolkitClientCommandRunner {
                 new DeviceInfoParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
-                    LoaderUrl = loader.Url
+                    LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath
                 },
                 report)
             .ConfigureAwait(false);
@@ -63,7 +64,8 @@ internal static partial class ToolkitClientCommandRunner {
                 new DeviceChipInfoParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
-                    LoaderUrl = loader.Url
+                    LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath
                 },
                 report)
             .ConfigureAwait(false);
@@ -87,7 +89,8 @@ internal static partial class ToolkitClientCommandRunner {
                 new DeviceChipIdParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
-                    LoaderUrl = loader.Url
+                    LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath
                 },
                 report)
             .ConfigureAwait(false);
@@ -110,7 +113,8 @@ internal static partial class ToolkitClientCommandRunner {
                 new DeviceCapabilityParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
-                    LoaderUrl = loader.Url
+                    LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath
                 },
                 report)
             .ConfigureAwait(false);
@@ -137,7 +141,8 @@ internal static partial class ToolkitClientCommandRunner {
                 new DeviceLoaderParams {
                     Target = target,
                     BlobId = input.BlobId,
-                    Url = input.Url
+                    Url = input.Url,
+                    ServerPath = input.ServerPath
                 },
                 report)
             .ConfigureAwait(false);

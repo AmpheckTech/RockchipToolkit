@@ -22,12 +22,14 @@ public sealed record DeviceLoaderParams {
     public required DeviceTarget Target { get; init; }
     public string? BlobId { get; init; }
     public string? Url { get; init; }
+    public string? ServerPath { get; init; }
 }
 
 public sealed record DeviceInfoParams {
     public required DeviceTarget Target { get; init; }
     public string? LoaderBlobId { get; init; }
     public string? LoaderUrl { get; init; }
+    public string? LoaderServerPath { get; init; }
 }
 
 public sealed record DeviceInfoResult {
@@ -48,6 +50,7 @@ public sealed record DeviceChipInfoParams {
     public required DeviceTarget Target { get; init; }
     public string? LoaderBlobId { get; init; }
     public string? LoaderUrl { get; init; }
+    public string? LoaderServerPath { get; init; }
 }
 
 public sealed record DeviceChipInfoResult {
@@ -59,6 +62,7 @@ public sealed record DeviceChipIdParams {
     public required DeviceTarget Target { get; init; }
     public string? LoaderBlobId { get; init; }
     public string? LoaderUrl { get; init; }
+    public string? LoaderServerPath { get; init; }
 }
 
 public sealed record DeviceResetParams {
@@ -70,6 +74,7 @@ public sealed record DeviceCapabilityParams {
     public required DeviceTarget Target { get; init; }
     public string? LoaderBlobId { get; init; }
     public string? LoaderUrl { get; init; }
+    public string? LoaderServerPath { get; init; }
 }
 
 public sealed record DeviceCapabilityResult {

@@ -3,6 +3,7 @@ using Ampheck.RockchipToolkit.Protocol;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
+using Ampheck.RockchipToolkit.Server.Rpc;
 using Ampheck.RockchipToolkit.Transport;
 using Microsoft.Extensions.Logging;
 
@@ -50,8 +51,10 @@ internal sealed class DeviceService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         var chip = RockchipChipInfoParser.Parse(
@@ -83,8 +86,10 @@ internal sealed class DeviceService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         var info = RockchipChipInfoParser.Parse(
@@ -103,8 +108,10 @@ internal sealed class DeviceService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         return new DeviceChipIdResult {
@@ -121,8 +128,10 @@ internal sealed class DeviceService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                parameters.LoaderBlobId,
-                parameters.LoaderUrl,
+                new DeviceLoaderInput(
+                    parameters.LoaderBlobId,
+                    parameters.LoaderUrl,
+                    parameters.LoaderServerPath),
                 context)
             .ConfigureAwait(false);
         var capability = RockchipCapabilityParser.Parse(
@@ -138,9 +147,14 @@ internal sealed class DeviceService(
     public async ValueTask<EmptyResult> LoaderAsync(
         DeviceLoaderParams parameters,
         JsonRpcCallContext context) {
-        var location = !string.IsNullOrWhiteSpace(parameters.BlobId)
-            ? blobs.Get(parameters.BlobId).Path
-            : parameters.Url;
+        var location = parameters.ServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                parameters.ServerPath,
+                "Loader")
+            : !string.IsNullOrWhiteSpace(parameters.BlobId)
+                ? blobs.Get(parameters.BlobId).Path
+                : parameters.Url;
         if (string.IsNullOrWhiteSpace(location)) {
             throw new InvalidDataException(
                 "The loader request contains no input.");
@@ -181,8 +195,10 @@ internal sealed class DeviceService(
         JsonRpcCallContext context) {
         await using var lease = await access.OpenAsync(
                 parameters.Target,
-                loaderBlobId: null,
-                loaderUrl: null,
+                new DeviceLoaderInput(
+                    BlobId: null,
+                    Url: null,
+                    ServerPath: null),
                 context)
             .ConfigureAwait(false);
         await lease.Device.ResetAsync(

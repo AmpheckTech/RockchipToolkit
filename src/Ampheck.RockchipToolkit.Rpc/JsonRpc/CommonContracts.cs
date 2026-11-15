@@ -22,6 +22,14 @@ public sealed record BlobReference {
     public string? Sha256 { get; init; }
 }
 
+public sealed record FileReference {
+    public string? BlobId { get; init; }
+    public string? Path { get; init; }
+    public required string FileName { get; init; }
+    public long Length { get; init; }
+    public string? Sha256 { get; init; }
+}
+
 public sealed record ClientInfo(
     string Name,
     string Peer,

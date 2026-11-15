@@ -178,6 +178,7 @@ internal sealed partial class JsonRpcConnection : IAsyncDisposable {
                 RequestId = request.Id,
                 TaskId = taskId,
                 Client = _client,
+                IsLocalClient = IsLoopbackPeer(_client.Peer),
                 CancellationToken = operationToken,
                 Report = ReportAsync
             };
@@ -352,4 +353,11 @@ internal sealed partial class JsonRpcConnection : IAsyncDisposable {
             value,
             typeof(T),
             ToolkitJsonSerializerContext.Default);
+
+    private static bool IsLoopbackPeer(string peer) {
+        return System.Net.IPEndPoint.TryParse(
+                peer,
+                out var endpoint) &&
+            System.Net.IPAddress.IsLoopback(endpoint.Address);
+    }
 }

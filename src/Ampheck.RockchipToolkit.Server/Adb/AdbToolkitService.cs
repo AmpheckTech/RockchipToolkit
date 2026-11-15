@@ -3,6 +3,7 @@ using Ampheck.Adb;
 using Ampheck.Adb.Server;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Server.Blobs;
+using Ampheck.RockchipToolkit.Server.Rpc;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Adb;
@@ -119,18 +120,28 @@ internal sealed class AdbToolkitService {
         await _server.EnsureRunningAsync(
                 context.CancellationToken)
             .ConfigureAwait(false);
-        var blob = _blobs.Get(parameters.BlobId);
+        var sourcePath = parameters.ServerPath is not null
+            ? RpcFileAccess.RequireServerPath(
+                context,
+                parameters.ServerPath,
+                "ADB push input")
+            : _blobs.Get(
+                    parameters.BlobId ??
+                    throw new InvalidDataException(
+                        "The ADB push request contains no input."))
+                .Path;
+        var fileName = Path.GetFileName(sourcePath);
         var destination = parameters.Destination.EndsWith(
             "/",
             StringComparison.Ordinal)
-                ? parameters.Destination + blob.Reference.FileName
+                ? parameters.Destination + fileName
                 : parameters.Destination;
         var device = await _client.GetOnlineDeviceAsync(
                 parameters.SerialNumber,
                 context.CancellationToken)
             .ConfigureAwait(false);
         await device.PushAsync(
-                blob.Path,
+                sourcePath,
                 destination,
                 cancellationToken: context.CancellationToken)
             .ConfigureAwait(false);
@@ -138,7 +149,7 @@ internal sealed class AdbToolkitService {
     }
 
     [JsonRpcMethod(JsonRpcMethods.AdbPull, longRunning: true)]
-    public async ValueTask<BlobReference> PullAsync(
+    public async ValueTask<FileReference> PullAsync(
         AdbPullParams parameters,
         JsonRpcCallContext context) {
         if (string.IsNullOrWhiteSpace(parameters.Source)) {
@@ -158,6 +169,25 @@ internal sealed class AdbToolkitService {
             name = "adb-pull.bin";
         }
 
+        if (parameters.DestinationServerPath is not null) {
+            var destination = RpcFileAccess.RequireServerPath(
+                context,
+                parameters.DestinationServerPath,
+                "ADB pull destination");
+            if (Directory.Exists(destination)) {
+                destination = Path.Combine(destination, name);
+            }
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(destination)!);
+            await device.PullAsync(
+                    parameters.Source,
+                    destination,
+                    cancellationToken: context.CancellationToken)
+                .ConfigureAwait(false);
+            return RpcFileAccess.CreateFileReference(destination);
+        }
+
         var temporary = Path.Combine(
             Path.GetTempPath(),
             $"ampheck-adb-pull-{Guid.NewGuid():N}");
@@ -167,7 +197,7 @@ internal sealed class AdbToolkitService {
                     temporary,
                     cancellationToken: context.CancellationToken)
                 .ConfigureAwait(false);
-            return await _blobs.CreateAsync(
+            var blob = await _blobs.CreateAsync(
                     name,
                     async (destination, cancellationToken) => {
                         await using var source = new FileStream(
@@ -185,6 +215,7 @@ internal sealed class AdbToolkitService {
                     },
                     context.CancellationToken)
                 .ConfigureAwait(false);
+            return RpcFileAccess.CreateFileReference(blob);
         } finally {
             try {
                 File.Delete(temporary);

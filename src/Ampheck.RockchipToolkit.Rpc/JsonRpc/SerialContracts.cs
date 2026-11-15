@@ -50,4 +50,5 @@ public sealed record StreamSessionResult {
 public sealed record SerialHistoryParams {
     public required string PortName { get; init; }
     public int MaximumBytes { get; init; } = 256 * 1024;
+    public string? OutputServerPath { get; init; }
 }

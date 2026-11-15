@@ -46,6 +46,9 @@ arkt server stop
 
 Linux 下需要配置 USB/串口权限，或者使用 `sudo` 启动 Server。
 
+本机 loopback 模式直接使用 Server 本地路径，不经过文件上传下载。远端模式
+自动使用 blob 传输，也可通过 `ARKT_FILE_MODE=auto|server|upload` 覆盖。
+
 ## 远程使用
 
 连接设备的机器：
@@ -141,6 +144,31 @@ arkt completion bash
 
 补全支持 `bash`、`zsh`、`fish` 和 `powershell`。
 
+## MCP
+
+`arkt-mcp` 提供 Streamable HTTP MCP 接口，并通过本机 WebSocket RPC 连接
+Toolkit Server。
+
+```bash
+arkt-mcp --server 127.0.0.1:5070 --listen http://127.0.0.1:5071
+```
+
+MCP 地址为 `http://127.0.0.1:5071/mcp`。也可以通过 `ARKT_SERVER`、
+`ARKT_SERVER_TOKEN` 和 `ARKT_MCP_LISTEN` 配置连接与监听地址。
+文件传输模式可通过 `--file-mode auto|server|upload` 或 `ARKT_FILE_MODE` 覆盖。
+
+提供的工具：
+
+- 设备：`list_devices`、`get_device_info`、`get_chip_info`、`get_chip_id`、
+  `get_capabilities`、`load_loader`、`reset_device`
+- 固件和存储：`flash_firmware`、`read_storage`、`write_storage`、
+  `erase_storage`、`select_storage`
+- 串口：`list_serial_ports`、`open_serial_port`、`close_serial_port`、
+  `clear_serial_buffer`、`read_serial_history`
+- ADB：`list_adb_devices`、`adb_shell`、`adb_push`、`adb_pull`、
+  `reboot_adb_device`
+- 任务和服务：`list_tasks`、`get_task`、`cancel_task`、`get_server_info`
+
 ## 构建
 
 需要 .NET 10 SDK：
@@ -148,4 +176,12 @@ arkt completion bash
 ```bash
 dotnet restore Ampheck.RockchipToolkit.slnx
 dotnet build Ampheck.RockchipToolkit.slnx -c Release
+```
+
+发布 MCP Bridge：
+
+```bash
+dotnet publish \
+  src/Ampheck.RockchipToolkit.Mcp/Ampheck.RockchipToolkit.Mcp.csproj \
+  -c Release -r linux-x64 -o release/arkt-mcp
 ```

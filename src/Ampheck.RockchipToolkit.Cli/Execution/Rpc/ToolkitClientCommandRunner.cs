@@ -23,7 +23,10 @@ internal static partial class ToolkitClientCommandRunner {
         await using var client = new ToolkitRpcClient(
             endpoint,
             token,
-            clientName);
+            clientName,
+            ToolkitFileAccess.Parse(
+                Environment.GetEnvironmentVariable(
+                    "ARKT_FILE_MODE")));
         await using var payload = new ToolkitPayloadPlan(
             client,
             logger,
@@ -178,7 +181,10 @@ internal static partial class ToolkitClientCommandRunner {
             ToolkitPayloadPlan payload,
             CommandOptions options) {
         return string.IsNullOrWhiteSpace(options.Loader)
-            ? new PayloadReference(null, null)
+            ? new PayloadReference(
+                BlobId: null,
+                Url: null,
+                ServerPath: null)
             : await payload.PrepareFileAsync(
                     options.Loader,
                     options.FetchLocation,

@@ -27,8 +27,10 @@ internal static partial class ToolkitClientCommandRunner {
                     Target = target,
                     FirmwareBlobId = firmware.BlobId,
                     FirmwareUrl = firmware.Url,
+                    FirmwareServerPath = firmware.ServerPath,
                     LoaderBlobId = loader.BlobId,
                     LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath,
                     ResetAfterFlash = options.ResetAfterFlash
                 },
                 report)
@@ -47,14 +49,21 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var blob = await client.RequestAsync<
+        var outputServerPath =
+            client.UseServerPaths &&
+            !IsHttpLocation(options.File!)
+                ? Path.GetFullPath(options.File!)
+                : null;
+        var file = await client.RequestAsync<
             StorageReadParams,
-            BlobReference>(
+            FileReference>(
                 JsonRpcMethods.StorageRead,
                 new StorageReadParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
                     LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath,
+                    OutputServerPath = outputServerPath,
                     Sector = options.Sector ?? 0,
                     Count = options.Count ?? 1
                 },
@@ -63,17 +72,19 @@ internal static partial class ToolkitClientCommandRunner {
         try {
             await BlobOutput.WriteAsync(
                     client,
-                    blob,
+                    file,
                     options.File!,
                     console,
                     logger)
                 .ConfigureAwait(false);
         } finally {
-            await client.DeleteBlobAsync(blob.BlobId)
-                .ConfigureAwait(false);
+            if (file.BlobId is { } blobId) {
+                await client.DeleteBlobAsync(blobId)
+                    .ConfigureAwait(false);
+            }
         }
 
-        Console.WriteLine($"Read {blob.Length:N0} bytes");
+        Console.WriteLine($"Read {file.Length:N0} bytes");
         return 0;
     }
 
@@ -100,13 +111,20 @@ internal static partial class ToolkitClientCommandRunner {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
                     LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath,
                     BlobId = input.BlobId,
                     SourceUrl = input.Url,
+                    ServerPath = input.ServerPath,
                     Sector = options.Sector ?? 0,
                     Length = options.WriteLength,
                     SourceOffset = options.WriteSourceOffset,
                     EraseBeforeWrite = options.EraseBeforeWrite,
-                    Backup = options.Backup is not null
+                    Backup = options.Backup is not null,
+                    BackupServerPath =
+                        client.UseServerPaths &&
+                        options.Backup is not null
+                            ? Path.GetFullPath(options.Backup)
+                            : null
                 },
                 report)
             .ConfigureAwait(false);
@@ -120,8 +138,10 @@ internal static partial class ToolkitClientCommandRunner {
                         logger)
                     .ConfigureAwait(false);
             } finally {
-                await client.DeleteBlobAsync(backup.BlobId)
-                    .ConfigureAwait(false);
+                if (backup.BlobId is { } blobId) {
+                    await client.DeleteBlobAsync(blobId)
+                        .ConfigureAwait(false);
+                }
             }
         }
 
@@ -146,6 +166,7 @@ internal static partial class ToolkitClientCommandRunner {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
                     LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath,
                     Sector = options.Sector ?? 0,
                     Count = options.Count ?? 1
                 },
@@ -171,6 +192,7 @@ internal static partial class ToolkitClientCommandRunner {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
                     LoaderUrl = loader.Url,
+                    LoaderServerPath = loader.ServerPath,
                     Storage = options.Storage ??
                         throw new ArgumentException(
                             "A storage type is required.")
@@ -199,5 +221,13 @@ internal static partial class ToolkitClientCommandRunner {
             .ConfigureAwait(false);
         Console.WriteLine("Reset requested");
         return 0;
+    }
+
+    private static bool IsHttpLocation(string value) {
+        return Uri.TryCreate(
+                value,
+                UriKind.Absolute,
+                out var uri) &&
+            uri.Scheme is "http" or "https";
     }
 }
