@@ -32,16 +32,28 @@ internal sealed class FirmwareService(
         }
 
         var logger = loggerFactory.CreateLogger<FirmwareService>();
-        await using var input = await FlashInput.OpenAsync(
+        ValueTask ReportFirmwareProgress(
+            long current,
+            long total) =>
+            context.ProgressAsync(
+                "firmware",
+                current,
+                total);
+        ValueTask ReportEraseProgress(
+            long current,
+            long total) =>
+            context.ProgressAsync(
+                "erase",
+                current,
+                total);
+        var files = new FirmwareFileContext(
+            logger,
+            context.StatusAsync,
+            ReportFirmwareProgress,
+            limits);
+        await using var input = await files.OpenFlashInputAsync(
                 location,
-                logger,
-                context.StatusAsync,
-                (current, total) => context.ProgressAsync(
-                    "firmware",
-                    current,
-                    total),
-                context.CancellationToken,
-                limits: limits)
+                context.CancellationToken)
             .ConfigureAwait(false);
         await using var lease = await access.OpenAsync(
                 parameters.Target,
@@ -54,38 +66,18 @@ internal sealed class FirmwareService(
                     input.SourceKind == FlashSourceKind.UpdateImage,
                 firmwarePath: input.Location)
             .ConfigureAwait(false);
+        var flashContext = new FirmwareFlashContext(
+            lease.Device,
+            files,
+            ReportEraseProgress);
         if (input.SourceKind == FlashSourceKind.UpdateImage) {
-            await UpdateImageFlasher.FlashAsync(
-                    lease.Device,
+            await new UpdateImageFlasher(flashContext).FlashAsync(
                     input.Location,
-                    logger,
-                    context.StatusAsync,
-                    (current, total) => context.ProgressAsync(
-                        "firmware",
-                        current,
-                        total),
-                    (current, total) => context.ProgressAsync(
-                        "erase",
-                        current,
-                        total),
-                    limits,
                     context.CancellationToken)
                 .ConfigureAwait(false);
         } else {
-            await DirectoryFlasher.FlashAsync(
-                    lease.Device,
+            await new DirectoryFlasher(flashContext).FlashAsync(
                     input.Location,
-                    logger,
-                    context.StatusAsync,
-                    (current, total) => context.ProgressAsync(
-                        "firmware",
-                        current,
-                        total),
-                    (current, total) => context.ProgressAsync(
-                        "erase",
-                        current,
-                        total),
-                    limits,
                     context.CancellationToken)
                 .ConfigureAwait(false);
         }

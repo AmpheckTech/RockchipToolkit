@@ -22,23 +22,15 @@ internal sealed class InputFile : IAsyncDisposable {
 
     public static async ValueTask<InputFile> OpenAsync(
         string location,
-        ILogger logger,
-        Func<string, ValueTask>? report = null,
-        Func<long, long, ValueTask>? progress = null,
-        CancellationToken cancellationToken = default,
-        HttpClient? httpClient = null,
-        ToolkitTransferLimits? limits = null) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken = default) {
         ArgumentException.ThrowIfNullOrWhiteSpace(location);
-        limits ??= ToolkitTransferLimits.Default;
         if (WebUri.TryGetHttp(location, out var uri)) {
             return await DownloadAsync(
                     uri,
-                    logger,
-                    report,
-                    progress,
+                    context,
                     cancellationToken,
-                    httpClient ?? ToolkitHttpClientFactory.For(uri),
-                    limits)
+                    ToolkitHttpClientFactory.For(uri))
                 .ConfigureAwait(false);
         }
 
@@ -48,11 +40,14 @@ internal sealed class InputFile : IAsyncDisposable {
                 location);
         }
 
-        logger.LogDebug(
+        context.Logger.LogDebug(
             "Using local input file {FilePath} ({ByteCount} bytes)",
             location,
             new FileInfo(location).Length);
-        return new InputFile(location, temporary: false, logger);
+        return new InputFile(
+            location,
+            temporary: false,
+            context.Logger);
     }
 
     public ValueTask DisposeAsync() {
@@ -78,23 +73,18 @@ internal sealed class InputFile : IAsyncDisposable {
 
     private static async ValueTask<InputFile> DownloadAsync(
         Uri uri,
-        ILogger logger,
-        Func<string, ValueTask>? report,
-        Func<long, long, ValueTask>? progress,
+        FirmwareFileContext context,
         CancellationToken cancellationToken,
-        HttpClient httpClient,
-        ToolkitTransferLimits limits) {
-        logger.LogInformation(
+        HttpClient httpClient) {
+        context.Logger.LogInformation(
             "Downloading remote input from {RemoteHost}",
             WebUri.GetDisplayAuthority(uri));
         var fileName = System.IO.Path.GetFileName(uri.AbsolutePath);
-        if (report is not null) {
-            await report(
-                    string.IsNullOrEmpty(fileName)
-                        ? "Downloading firmware from HTTP"
-                        : $"Downloading {fileName} from HTTP")
-                .ConfigureAwait(false);
-        }
+        await context.Report(
+                string.IsNullOrEmpty(fileName)
+                    ? "Downloading firmware from HTTP"
+                    : $"Downloading {fileName} from HTTP")
+            .ConfigureAwait(false);
 
         using var response = await httpClient.GetAsync(
                 uri,
@@ -113,10 +103,10 @@ internal sealed class InputFile : IAsyncDisposable {
             response.Content.Headers.ContentLength;
         if (contentLength is { } declaredLength &&
             declaredLength >
-            limits.MaximumBlobBytes) {
+            context.Limits.MaximumBlobBytes) {
             throw new InvalidDataException(
                 $"Remote input exceeds the configured " +
-                $"{limits.MaximumBlobBytes} byte limit.");
+                $"{context.Limits.MaximumBlobBytes} byte limit.");
         }
 
         var temporaryPath = System.IO.Path.Combine(
@@ -145,7 +135,7 @@ internal sealed class InputFile : IAsyncDisposable {
                 }
 
                 if (read >
-                    limits.MaximumBlobBytes - totalRead) {
+                    context.Limits.MaximumBlobBytes - totalRead) {
                     throw new InvalidDataException(
                         "Remote input exceeds the configured size limit.");
                 }
@@ -155,9 +145,9 @@ internal sealed class InputFile : IAsyncDisposable {
                         cancellationToken)
                     .ConfigureAwait(false);
                 totalRead += read;
-                if (progress is not null &&
+                if (context.Progress is not null &&
                     contentLength is > 0) {
-                    await progress(
+                    await context.Progress(
                             totalRead,
                             contentLength.Value)
                         .ConfigureAwait(false);
@@ -166,22 +156,22 @@ internal sealed class InputFile : IAsyncDisposable {
 
             await destination.FlushAsync(cancellationToken)
                 .ConfigureAwait(false);
-            logger.LogInformation(
+            context.Logger.LogInformation(
                 "Downloaded {ByteCount} bytes to {TemporaryPath}",
                 destination.Length,
                 temporaryPath);
-            if (report is not null &&
-                !string.IsNullOrEmpty(fileName)) {
-                await report($"Download complete: {fileName}")
+            if (!string.IsNullOrEmpty(fileName)) {
+                await context.Report(
+                        $"Download complete: {fileName}")
                     .ConfigureAwait(false);
             }
 
             return new InputFile(
                 temporaryPath,
                 temporary: true,
-                logger);
+                context.Logger);
         } catch {
-            TryDelete(temporaryPath, logger);
+            TryDelete(temporaryPath, context.Logger);
             throw;
         }
     }

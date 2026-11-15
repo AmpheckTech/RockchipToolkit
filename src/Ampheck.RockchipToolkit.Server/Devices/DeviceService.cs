@@ -2,7 +2,6 @@ using Ampheck.RockchipToolkit.Device;
 using Ampheck.RockchipToolkit.Protocol;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
-using Ampheck.RockchipToolkit.Server.Blobs;
 using Ampheck.RockchipToolkit.Server.Rpc;
 using Ampheck.RockchipToolkit.Transport;
 using Microsoft.Extensions.Logging;
@@ -12,8 +11,6 @@ namespace Ampheck.RockchipToolkit.Server.Devices;
 [JsonRpcService]
 internal sealed class DeviceService(
     DeviceAccess access,
-    BlobStore blobs,
-    ToolkitTransferLimits limits,
     ILoggerFactory loggerFactory) {
 
     [JsonRpcMethod(JsonRpcMethods.DeviceList)]
@@ -147,42 +144,13 @@ internal sealed class DeviceService(
     public async ValueTask<EmptyResult> LoaderAsync(
         DeviceLoaderParams parameters,
         JsonRpcCallContext context) {
-        var location = parameters.ServerPath is not null
-            ? RpcFileAccess.RequireServerPath(
-                context,
-                parameters.ServerPath,
-                "Loader")
-            : !string.IsNullOrWhiteSpace(parameters.BlobId)
-                ? blobs.Get(parameters.BlobId).Path
-                : parameters.Url;
-        if (string.IsNullOrWhiteSpace(location)) {
-            throw new InvalidDataException(
-                "The loader request contains no input.");
-        }
-
-        await using var input = await Firmware.InputFile.OpenAsync(
-                location,
-                loggerFactory.CreateLogger<DeviceService>(),
-                context.StatusAsync,
-                (current, total) => context.ProgressAsync(
-                    "loader",
-                    current,
-                    total),
-                context.CancellationToken,
-                limits: limits)
-            .ConfigureAwait(false);
-        await using var session = await DeviceConnector.OpenAsync(
+        await using var lease = await access.OpenAsync(
                 parameters.Target,
-                loggerFactory,
-                loggerFactory.CreateLogger<DeviceService>(),
-                context.CancellationToken)
-            .ConfigureAwait(false);
-        await using var device = new RockchipDevice(
-            session.Transport,
-            loggerFactory: loggerFactory);
-        await device.DownloadBootAsync(
-                input.Path,
-                context.CancellationToken)
+                new DeviceLoaderInput(
+                    parameters.BlobId,
+                    parameters.Url,
+                    parameters.ServerPath),
+                context)
             .ConfigureAwait(false);
         await context.OutputAsync("Bootloader downloaded")
             .ConfigureAwait(false);

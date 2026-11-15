@@ -1,6 +1,5 @@
 using Ampheck.RockchipToolkit.Images;
 using Ampheck.RockchipToolkit.Server.IO;
-using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
 
@@ -24,14 +23,9 @@ internal sealed class FlashInput : IAsyncDisposable {
 
     public static async ValueTask<FlashInput> OpenAsync(
         string location,
-        ILogger logger,
-        Func<string, ValueTask>? report = null,
-        Func<long, long, ValueTask>? progress = null,
-        CancellationToken cancellationToken = default,
-        HttpClient? httpClient = null,
-        ToolkitTransferLimits? limits = null) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken = default) {
         ArgumentException.ThrowIfNullOrWhiteSpace(location);
-        limits ??= ToolkitTransferLimits.Default;
         if (Directory.Exists(location)) {
             return new FlashInput(
                 FlashSourceKind.FirmwareDirectory,
@@ -42,21 +36,13 @@ internal sealed class FlashInput : IAsyncDisposable {
             return IsArchivePath(location)
                 ? await OpenArchiveAsync(
                         location,
-                        logger,
-                        report,
-                        progress,
-                        cancellationToken,
-                        httpClient,
-                        limits)
+                        context,
+                        cancellationToken)
                     .ConfigureAwait(false)
                 : await OpenUpdateImageAsync(
                         location,
-                        logger,
-                        report,
-                        progress,
-                        cancellationToken,
-                        httpClient,
-                        limits)
+                        context,
+                        cancellationToken)
                     .ConfigureAwait(false);
         }
 
@@ -77,24 +63,16 @@ internal sealed class FlashInput : IAsyncDisposable {
         if (IsArchivePath(uri.AbsolutePath)) {
             return await OpenArchiveAsync(
                     location,
-                    logger,
-                    report,
-                    progress,
-                    cancellationToken,
-                    httpClient,
-                    limits)
+                    context,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
         if (!IsUpdateImagePath(uri) &&
             await HasFirmwareParameterAsync(
                     location,
-                    logger,
-                    report,
-                    progress,
-                    cancellationToken,
-                    httpClient,
-                    limits)
+                    context,
+                    cancellationToken)
                 .ConfigureAwait(false)) {
             return new FlashInput(
                 FlashSourceKind.FirmwareDirectory,
@@ -103,12 +81,8 @@ internal sealed class FlashInput : IAsyncDisposable {
 
         return await OpenUpdateImageAsync(
                 location,
-                logger,
-                report,
-                progress,
-                cancellationToken,
-                httpClient,
-                limits)
+                context,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -134,20 +108,12 @@ internal sealed class FlashInput : IAsyncDisposable {
 
     private static async ValueTask<FlashInput> OpenArchiveAsync(
         string location,
-        ILogger logger,
-        Func<string, ValueTask>? report,
-        Func<long, long, ValueTask>? progress,
-        CancellationToken cancellationToken,
-        HttpClient? httpClient,
-        ToolkitTransferLimits limits) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken) {
         var file = await InputFile.OpenAsync(
                 location,
-                logger,
-                report,
-                progress,
-                cancellationToken,
-                httpClient,
-                limits)
+                context,
+                cancellationToken)
             .ConfigureAwait(false);
         var directory = Path.Combine(
             Path.GetTempPath(),
@@ -157,7 +123,7 @@ internal sealed class FlashInput : IAsyncDisposable {
             await FirmwareArchive.ExtractAsync(
                 file.Path,
                 directory,
-                limits,
+                context.Limits,
                 alreadyExpandedBytes: 0,
                 cancellationToken)
                 .ConfigureAwait(false);
@@ -177,20 +143,12 @@ internal sealed class FlashInput : IAsyncDisposable {
 
     private static async ValueTask<FlashInput> OpenUpdateImageAsync(
         string location,
-        ILogger logger,
-        Func<string, ValueTask>? report,
-        Func<long, long, ValueTask>? progress,
-        CancellationToken cancellationToken,
-        HttpClient? httpClient,
-        ToolkitTransferLimits limits) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken) {
         var file = await InputFile.OpenAsync(
                 location,
-                logger,
-                report,
-                progress,
-                cancellationToken,
-                httpClient,
-                limits)
+                context,
+                cancellationToken)
             .ConfigureAwait(false);
         try {
             using var update = RockchipUpdateImage.Open(file.Path);
@@ -210,23 +168,15 @@ internal sealed class FlashInput : IAsyncDisposable {
 
     private static async Task<bool> HasFirmwareParameterAsync(
         string location,
-        ILogger logger,
-        Func<string, ValueTask>? report,
-        Func<long, long, ValueTask>? progress,
-        CancellationToken cancellationToken,
-        HttpClient? httpClient,
-        ToolkitTransferLimits limits) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken) {
         var source = FirmwareSource.Create(location);
         InputFile? parameterFile = null;
         try {
             parameterFile = await source.TryOpenAsync(
                     "parameter.txt",
-                    logger,
-                    report,
-                    progress,
-                    cancellationToken,
-                    httpClient,
-                    limits)
+                    context,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (parameterFile is null) {
                 return false;

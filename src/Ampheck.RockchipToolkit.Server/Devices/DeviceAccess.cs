@@ -91,16 +91,21 @@ internal sealed class DeviceAccess(
                 "The loader input is missing.");
         }
 
-        await using var input = await InputFile.OpenAsync(
+        ValueTask ReportLoaderProgress(
+            long current,
+            long total) =>
+            context.ProgressAsync(
+                "loader",
+                current,
+                total);
+        var files = new FirmwareFileContext(
+            logger,
+            context.StatusAsync,
+            ReportLoaderProgress,
+            limits);
+        await using var input = await files.OpenInputAsync(
                 location,
-                logger,
-                context.StatusAsync,
-                (current, total) => context.ProgressAsync(
-                    "loader",
-                    current,
-                    total),
-                context.CancellationToken,
-                limits: limits)
+                context.CancellationToken)
             .ConfigureAwait(false);
         var session = await DeviceConnector.OpenAsync(
                 target,

@@ -96,16 +96,21 @@ internal sealed class StorageService(
                 ? blobs.Get(blobId).Path
                 : null;
         if (path is null) {
-            downloaded = await InputFile.OpenAsync(
+            ValueTask ReportInputProgress(
+                long current,
+                long total) =>
+                context.ProgressAsync(
+                    "input",
+                    current,
+                    total);
+            var files = new FirmwareFileContext(
+                logger,
+                context.StatusAsync,
+                ReportInputProgress,
+                limits);
+            downloaded = await files.OpenInputAsync(
                     parameters.SourceUrl!,
-                    logger,
-                    context.StatusAsync,
-                    (current, total) => context.ProgressAsync(
-                        "input",
-                        current,
-                        total),
-                    context.CancellationToken,
-                    limits: limits)
+                    context.CancellationToken)
                 .ConfigureAwait(false);
             path = downloaded.Path;
         }
@@ -139,12 +144,8 @@ internal sealed class StorageService(
                             parameters.LoaderServerPath),
                     context)
                 .ConfigureAwait(false);
-            await FirmwareWriter.WriteAsync(
+            await new FirmwareWriter(
                     lease.Device,
-                    path,
-                    parameters.Sector,
-                    backupPath,
-                    parameters.EraseBeforeWrite,
                     logger,
                     context.StatusAsync,
                     (current, total) => context.ProgressAsync(
@@ -154,9 +155,15 @@ internal sealed class StorageService(
                     (current, total) => context.ProgressAsync(
                         "erase",
                         current,
-                        total),
-                    length,
-                    sourceOffset,
+                        total))
+                .WriteAsync(
+                    path,
+                    new FirmwareWriteOptions(
+                        parameters.Sector,
+                        backupPath,
+                        parameters.EraseBeforeWrite,
+                        length,
+                        sourceOffset),
                     context.CancellationToken)
                 .ConfigureAwait(false);
             FileReference? backup = null;

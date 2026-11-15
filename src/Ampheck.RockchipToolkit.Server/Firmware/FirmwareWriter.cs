@@ -4,24 +4,22 @@ using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
 
-internal static class FirmwareWriter {
+internal sealed class FirmwareWriter(
+    RockchipDevice device,
+    ILogger logger,
+    Func<string, ValueTask>? report = null,
+    Func<long, long, ValueTask>? progress = null,
+    Func<long, long, ValueTask>? eraseProgress = null) {
     private const int IoBufferSize = 1 << 20;
 
-    public static async Task WriteAsync(
-        RockchipDevice device,
+    public async Task WriteAsync(
         string path,
-        uint sector,
-        string? backupPath,
-        bool eraseBeforeWrite,
-        ILogger logger,
-        Func<string, ValueTask>? report = null,
-        Func<long, long, ValueTask>? progress = null,
-        Func<long, long, ValueTask>? eraseProgress = null,
-        long? length = null,
-        long? sourceOffset = null,
+        FirmwareWriteOptions options,
         CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        EnsureBackupDoesNotOverwriteSource(path, backupPath);
+        EnsureBackupDoesNotOverwriteSource(
+            path,
+            options.BackupPath);
         await using var input = new FileStream(
             path,
             FileMode.Open,
@@ -30,35 +28,17 @@ internal static class FirmwareWriter {
             IoBufferSize,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         await WriteAsync(
-                device,
                 input,
                 path,
-                sector,
-                backupPath,
-                eraseBeforeWrite,
-                logger,
-                report,
-                progress,
-                eraseProgress,
-                length,
-                sourceOffset,
+                options,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public static async Task WriteAsync(
-        RockchipDevice device,
+    public async Task WriteAsync(
         Stream input,
         string sourceName,
-        uint sector,
-        string? backupPath,
-        bool eraseBeforeWrite,
-        ILogger logger,
-        Func<string, ValueTask>? report = null,
-        Func<long, long, ValueTask>? progress = null,
-        Func<long, long, ValueTask>? eraseProgress = null,
-        long? length = null,
-        long? sourceOffset = null,
+        FirmwareWriteOptions options,
         CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         if (!input.CanRead || !input.CanSeek) {
@@ -67,7 +47,7 @@ internal static class FirmwareWriter {
                 nameof(input));
         }
 
-        var offset = sourceOffset ?? 0;
+        var offset = options.SourceOffset ?? 0;
         if (offset < 0 || offset >= input.Length &&
             input.Length != 0) {
             throw new InvalidDataException(
@@ -75,41 +55,37 @@ internal static class FirmwareWriter {
         }
 
         var remainingLength = input.Length - offset;
-        var writeLength = length ?? remainingLength;
+        var writeLength = options.Length ?? remainingLength;
         if (writeLength < 0 || writeLength > remainingLength) {
             throw new InvalidDataException(
                 "The requested write length exceeds the input file.");
         }
 
         input.Position = offset;
-        ValidateLength(writeLength, sector);
-        if (backupPath is not null) {
+        ValidateLength(writeLength, options.Sector);
+        if (options.BackupPath is not null) {
             await ReportAsync(
-                    report,
                     $"Backing up {writeLength:N0} bytes to " +
-                    Path.GetFileName(backupPath))
+                    Path.GetFileName(options.BackupPath))
                 .ConfigureAwait(false);
             await BackupAsync(
-                    device,
-                    sector,
+                    options.Sector,
                     writeLength,
-                    backupPath,
-                    logger,
+                    options.BackupPath,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        if (eraseBeforeWrite) {
+        if (options.EraseBeforeWrite) {
             var sectorCount = checked(
                 (uint)(writeLength /
                     RockUsbProtocol.SectorSize));
             await ReportAsync(
-                    report,
                     $"Erasing {sectorCount:N0} sectors at " +
-                    $"0x{sector:X8}")
+                    $"0x{options.Sector:X8}")
                 .ConfigureAwait(false);
             await device.EraseAsync(
-                    sector,
+                    options.Sector,
                     sectorCount,
                     eraseProgress,
                     cancellationToken)
@@ -124,13 +100,14 @@ internal static class FirmwareWriter {
             "at sector 0x{StartSector:X8}, source offset 0x{SourceOffset:X8}",
             writeLength,
             sourceName,
-            sector,
+            options.Sector,
             offset);
         await ReportAsync(
-                report,
-                $"Writing {writeLength:N0} bytes at 0x{sector:X8}")
+                $"Writing {writeLength:N0} bytes at " +
+                $"0x{options.Sector:X8}")
             .ConfigureAwait(false);
         var buffer = new byte[IoBufferSize];
+        var sector = options.Sector;
         long totalRead = 0;
         while (totalRead < writeLength) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -161,18 +138,15 @@ internal static class FirmwareWriter {
         }
 
         await ReportAsync(
-                report,
                 $"Wrote {totalRead:N0} bytes from " +
                 Path.GetFileName(sourceName))
             .ConfigureAwait(false);
     }
 
-    private static async Task BackupAsync(
-        RockchipDevice device,
+    private async Task BackupAsync(
         uint sector,
         long length,
         string backupPath,
-        ILogger logger,
         CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
         await using var backup = new FileStream(
@@ -246,9 +220,7 @@ internal static class FirmwareWriter {
         }
     }
 
-    private static ValueTask ReportAsync(
-        Func<string, ValueTask>? report,
-        string message) {
+    private ValueTask ReportAsync(string message) {
         return report is null
             ? ValueTask.CompletedTask
             : report(message);

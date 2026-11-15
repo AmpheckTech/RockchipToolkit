@@ -1,5 +1,4 @@
 using Ampheck.RockchipToolkit.Server.IO;
-using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
 
@@ -38,21 +37,13 @@ internal sealed class FirmwareSource {
 
     public async ValueTask<InputFile?> TryOpenAsync(
         string fileName,
-        ILogger logger,
-        Func<string, ValueTask>? report,
-        Func<long, long, ValueTask>? progress = null,
-        CancellationToken cancellationToken = default,
-        HttpClient? httpClient = null,
-        ToolkitTransferLimits? limits = null) {
+        FirmwareFileContext context,
+        CancellationToken cancellationToken = default) {
         try {
             return await InputFile.OpenAsync(
                     GetLocation(fileName),
-                    logger,
-                    report,
-                    progress,
-                    cancellationToken,
-                    httpClient,
-                    limits)
+                    context,
+                    cancellationToken)
                 .ConfigureAwait(false);
         } catch (FileNotFoundException) {
             return null;

@@ -1,39 +1,29 @@
 using System.Text;
-using Ampheck.RockchipToolkit.Device;
 using Ampheck.RockchipToolkit.Images;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
 
-internal static class UpdateImageFlasher {
-    public static async Task FlashAsync(
-        RockchipDevice device,
+internal sealed class UpdateImageFlasher(FirmwareFlashContext context) {
+    public async Task FlashAsync(
         string sourceLocation,
-        ILogger logger,
-        Func<string, ValueTask> report,
-        Func<long, long, ValueTask>? progress,
-        Func<long, long, ValueTask>? eraseProgress,
-        ToolkitTransferLimits limits,
         CancellationToken cancellationToken) {
         await using var input = await InputFile.OpenAsync(
                 sourceLocation,
-                logger,
-                report,
-                progress,
-                cancellationToken,
-                limits: limits)
+                context.Files,
+                cancellationToken)
             .ConfigureAwait(false);
         using var update = RockchipUpdateImage.Open(input.Path);
-        await report(
+        await context.Files.Report(
                 $"Opened update image {Path.GetFileName(input.Path)}")
             .ConfigureAwait(false);
-        logger.LogInformation(
+        context.Files.Logger.LogInformation(
             "Update image: model={MachineModel}, " +
             "manufacturer={Manufacturer}, version=0x{Version:X8}",
             update.MachineModel,
             update.Manufacturer,
             update.Version);
-        await report(
+        await context.Files.Report(
                 $"Package: {update.MachineModel}, " +
                 $"{update.Manufacturer}, version 0x{update.Version:X8}")
             .ConfigureAwait(false);
@@ -55,7 +45,7 @@ internal static class UpdateImageFlasher {
                 entry.FileName.Equals(
                     "RESERVED",
                     StringComparison.OrdinalIgnoreCase)) {
-                logger.LogInformation(
+                context.Files.Logger.LogInformation(
                     "Skipping partition {PartitionName}: " +
                     "the update image contains no data",
                     partition.Name);
@@ -76,46 +66,49 @@ internal static class UpdateImageFlasher {
 
         var totalBytes = images.Sum(image => image.Entry.Size);
         long completedBytes = 0;
-        await report(
+        await context.Files.Report(
                 $"Ready to flash {images.Count} partition image(s), " +
                 $"{FormatBytes(totalBytes)} total")
             .ConfigureAwait(false);
         foreach (var (partition, entry) in images) {
-            await report(
+            await context.Files.Report(
                     $"{entry.FileName}: partition {partition.Name}, " +
                     $"sector 0x{partition.Offset:X8}, " +
                     FormatBytes(entry.Size))
                 .ConfigureAwait(false);
-            logger.LogInformation(
+            context.Files.Logger.LogInformation(
                 "Flashing partition {PartitionName} at 0x{Offset:X8} " +
                 "from {ImageName}",
                 partition.Name,
                 partition.Offset,
                 entry.FileName);
-            await using var image =
-                update.OpenEntryStream(entry);
-            await FirmwareWriter.WriteAsync(
-                    device,
+            await using var image = update.OpenEntryStream(entry);
+            await CreateWriter(completedBytes, totalBytes)
+                .WriteAsync(
                     image,
                     $"{entry.FileName} ({entry.Name})",
-                    partition.Offset,
-                    backupPath: null,
-                    eraseBeforeWrite: true,
-                    logger,
-                    report,
-                    progress is null
-                        ? null
-                        : (written, _) => progress(
-                            completedBytes + written,
-                            totalBytes),
-                    eraseProgress,
-                    cancellationToken: cancellationToken)
+                    new FirmwareWriteOptions(
+                        partition.Offset,
+                        EraseBeforeWrite: true),
+                    cancellationToken)
                 .ConfigureAwait(false);
             completedBytes += entry.Size;
         }
 
-        await report("Update image written")
+        await context.Files.Report("Update image written")
             .ConfigureAwait(false);
+    }
+
+    private FirmwareWriter CreateWriter(
+        long completedBytes,
+        long totalBytes) {
+        Func<long, long, ValueTask>? progress =
+            context.Files.Progress is { } report
+            ? (written, _) => report(
+                completedBytes + written,
+                totalBytes)
+            : null;
+        return context.CreateWriter(progress);
     }
 
     private static string FormatBytes(long bytes) {

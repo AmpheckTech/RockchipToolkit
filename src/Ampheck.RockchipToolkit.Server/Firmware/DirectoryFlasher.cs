@@ -4,23 +4,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Server.Firmware;
 
-internal static class DirectoryFlasher {
-    public static async Task FlashAsync(
-        RockchipDevice device,
+internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
+    public async Task FlashAsync(
         string sourceLocation,
-        ILogger logger,
-        Func<string, ValueTask> report,
-        Func<long, long, ValueTask>? progress,
-        Func<long, long, ValueTask>? eraseProgress,
-        ToolkitTransferLimits limits,
         CancellationToken cancellationToken) {
         var source = FirmwareSource.Create(sourceLocation);
         var partitions = await LoadPartitionsAsync(
                 source,
-                logger,
-                report,
-                progress,
-                limits,
                 cancellationToken)
             .ConfigureAwait(false);
         var images = new List<(
@@ -31,16 +21,13 @@ internal static class DirectoryFlasher {
         try {
             foreach (var partition in partitions) {
                 var imageName = $"{partition.Name}.img";
-                var image = await source.TryOpenAsync(
+                var image = await context.Files.TryOpenSourceAsync(
+                        source,
                         imageName,
-                        logger,
-                        report,
-                        progress,
-                        cancellationToken,
-                        limits: limits)
+                        cancellationToken)
                     .ConfigureAwait(false);
                 if (image is null) {
-                    logger.LogInformation(
+                    context.Files.Logger.LogInformation(
                         "Skipping partition {PartitionName}: " +
                         "{ImageName} is absent",
                         partition.Name,
@@ -74,37 +61,29 @@ internal static class DirectoryFlasher {
 
             var totalBytes = images.Sum(image => image.Length);
             long completedBytes = 0;
-            await report(
+            await context.Files.Report(
                     $"Ready to flash {images.Count} partition image(s), " +
                     $"{FormatBytes(totalBytes)} total")
                 .ConfigureAwait(false);
             foreach (var (partition, imageName, image, imageLength) in images) {
-                await report(
+                await context.Files.Report(
                         $"{imageName}: partition {partition.Name}, " +
                         $"sector 0x{partition.Offset:X8}, " +
                         FormatBytes(imageLength))
                     .ConfigureAwait(false);
-                logger.LogInformation(
+                context.Files.Logger.LogInformation(
                     "Flashing partition {PartitionName} at 0x{Offset:X8} " +
                     "from {ImageName}",
                     partition.Name,
                     partition.Offset,
                     imageName);
-                await FirmwareWriter.WriteAsync(
-                        device,
+                await CreateWriter(completedBytes, totalBytes)
+                    .WriteAsync(
                         image.Path,
-                        partition.Offset,
-                        backupPath: null,
-                        eraseBeforeWrite: true,
-                        logger,
-                        report,
-                        progress is null
-                            ? null
-                            : (written, _) => progress(
-                                completedBytes + written,
-                                totalBytes),
-                        eraseProgress,
-                        cancellationToken: cancellationToken)
+                        new FirmwareWriteOptions(
+                            partition.Offset,
+                            EraseBeforeWrite: true),
+                        cancellationToken)
                     .ConfigureAwait(false);
                 completedBytes += imageLength;
             }
@@ -114,31 +93,36 @@ internal static class DirectoryFlasher {
             }
         }
 
-        await report("Firmware directory written")
+        await context.Files.Report("Firmware directory written")
             .ConfigureAwait(false);
     }
 
-    private static async Task<IReadOnlyList<RockchipPartition>>
+    private async Task<IReadOnlyList<RockchipPartition>>
         LoadPartitionsAsync(
             FirmwareSource source,
-            ILogger logger,
-            Func<string, ValueTask> report,
-            Func<long, long, ValueTask>? progress,
-            ToolkitTransferLimits limits,
             CancellationToken cancellationToken) {
         await using var parameterFile = await InputFile.OpenAsync(
                 source.GetLocation("parameter.txt"),
-                logger,
-                report,
-                progress,
-                cancellationToken,
-                limits: limits)
+                context.Files,
+                cancellationToken)
             .ConfigureAwait(false);
         var parameter = await File.ReadAllTextAsync(
                 parameterFile.Path,
                 cancellationToken)
             .ConfigureAwait(false);
         return RockchipParameterParser.Parse(parameter);
+    }
+
+    private FirmwareWriter CreateWriter(
+        long completedBytes,
+        long totalBytes) {
+        Func<long, long, ValueTask>? progress =
+            context.Files.Progress is { } report
+            ? (written, _) => report(
+                completedBytes + written,
+                totalBytes)
+            : null;
+        return context.CreateWriter(progress);
     }
 
     private static string FormatBytes(long bytes) {
