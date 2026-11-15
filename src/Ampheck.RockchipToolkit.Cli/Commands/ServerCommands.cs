@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Execution;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
@@ -53,18 +54,24 @@ internal static class ServerCommands {
         nodaemon.Add(verbose);
         nodaemon.Add(maxBlob);
         nodaemon.Add(serialHistory);
+        var options = new CommandOptions();
         nodaemon.SetAction(parsed => {
-            state.Command = CommandNames.ServerNodaemon;
-            state.Options.ServerListen = parsed.GetValue(listen);
-            state.Options.ServerAccessToken = parsed.GetValue(token);
-            state.Options.ServerHostName =
+            options.ServerListen = parsed.GetValue(listen);
+            options.ServerAccessToken = parsed.GetValue(token);
+            options.ServerHostName =
                 parsed.GetValue(hostName);
-            state.Options.ServerIdleSeconds =
+            options.ServerIdleSeconds =
                 parsed.GetValue(idleTimeout);
-            state.Options.ServerMaxBlobMiB =
+            options.ServerMaxBlobMiB =
                 parsed.GetValue(maxBlob);
-            state.Options.ServerSerialHistoryKiB =
+            options.ServerSerialHistoryKiB =
                 parsed.GetValue(serialHistory);
+            state.Invocation = new CliInvocation(
+                CommandNames.ServerNodaemon,
+                RequiresServer: false,
+                (context, _) => ServerCommandRunner.RunNodaemonAsync(
+                    options,
+                    context));
             return 0;
         });
         server.Add(nodaemon);
@@ -94,7 +101,16 @@ internal static class ServerCommands {
         string description) {
         var command = new Command(name, description);
         command.SetAction(_ => {
-            state.Command = canonicalCommand;
+            state.Invocation = new CliInvocation(
+                canonicalCommand,
+                RequiresServer: false,
+                (context, _) => canonicalCommand switch {
+                    CommandNames.ServerStart =>
+                        ServerCommandRunner.StartAsync(context),
+                    CommandNames.ServerStop =>
+                        ServerCommandRunner.StopAsync(context),
+                    _ => ServerCommandRunner.StatusAsync(context)
+                });
             return 0;
         });
         return command;
@@ -111,9 +127,13 @@ internal static class ServerCommands {
             "Find toolkit servers on the local network.");
         command.Add(timeout);
         command.SetAction(parsed => {
-            state.Command = CommandNames.Discover;
-            state.Options.DiscoverySeconds =
-                parsed.GetValue(timeout);
+            var seconds = parsed.GetValue(timeout);
+            state.Invocation = new CliInvocation(
+                CommandNames.Discover,
+                RequiresServer: false,
+                (context, _) => ServerCommandRunner.DiscoverAsync(
+                    seconds,
+                    context));
             return 0;
         });
         return command;

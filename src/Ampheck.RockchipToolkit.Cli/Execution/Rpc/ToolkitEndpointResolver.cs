@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
@@ -10,9 +9,10 @@ internal static class ToolkitEndpointResolver {
         ToolkitServerDefaults.Endpoint;
 
     public static async Task<ToolkitEndpoint?> ResolveAsync(
-        CommandOptions options,
+        string? requestedEndpoint,
         CancellationToken cancellationToken) {
-        var requested = options.ServerEndpoint ?? Environment.GetEnvironmentVariable("ARKT_SERVER");
+        var requested = requestedEndpoint ??
+            Environment.GetEnvironmentVariable("ARKT_SERVER");
         if (!string.IsNullOrWhiteSpace(requested)) {
             var endpoint = ToolkitEndpoint.Parse(requested);
             if (!await IsReachableAsync(endpoint, cancellationToken).ConfigureAwait(false)) {

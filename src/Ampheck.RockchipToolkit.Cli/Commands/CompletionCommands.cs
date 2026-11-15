@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Infrastructure;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
@@ -20,9 +21,16 @@ internal static class CompletionCommands {
         shell.AcceptOnlyFromAmong(Shells);
         command.Add(shell);
         command.SetAction(parsed => {
-            state.Command = CommandNames.Completion;
-            state.Options.CompletionShell =
-                parsed.GetValue(shell);
+            var selectedShell = parsed.GetValue(shell);
+            state.Invocation = new CliInvocation(
+                CommandNames.Completion,
+                RequiresServer: false,
+                (context, _) => {
+                    Console.Out.Write(CompletionScripts.Get(
+                        selectedShell!));
+                    Console.Out.Flush();
+                    return Task.FromResult(0);
+                });
             return 0;
         });
         return command;

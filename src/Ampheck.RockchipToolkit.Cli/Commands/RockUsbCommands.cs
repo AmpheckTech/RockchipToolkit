@@ -1,9 +1,10 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static class RockUsbCommands {
+internal static partial class RockUsbCommands {
     private static readonly string[] StorageTypes = [
         "emmc",
         "sd-card",
@@ -46,10 +47,16 @@ internal static class RockUsbCommands {
         var command = new Command(
             CommandNames.Devices,
             "List connected RockUSB devices.");
+        var options = new CommandOptions();
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
-            CommandNames.Devices);
+            options,
+            CommandNames.Devices,
+            (context, _) => ExecuteRpc(
+                CommandNames.Devices,
+                options,
+                context));
         return command;
     }
 
@@ -59,10 +66,16 @@ internal static class RockUsbCommands {
         string canonicalCommand,
         string description) {
         var command = new Command(name, description);
+        var options = new CommandOptions();
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             canonicalCommand,
+            (context, _) => ExecuteRpc(
+                canonicalCommand,
+                options,
+                context),
             allowLoader: true);
         return command;
     }
@@ -81,10 +94,16 @@ internal static class RockUsbCommands {
         var id = new Command(
             "id",
             "Read the flash ID.");
+        var options = new CommandOptions();
         CommandOptionsBinder.AddRockUsbOptions(
             id,
             state,
+            options,
             CommandNames.ChipId,
+            (context, _) => ExecuteRpc(
+                CommandNames.ChipId,
+                options,
+                context),
             allowLoader: true);
         command.Add(id);
         return command;
@@ -99,13 +118,19 @@ internal static class RockUsbCommands {
             "loader") {
             Description = "Loader file, URL, or UNC path."
         };
+        var options = new CommandOptions();
         command.Add(location);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Loader,
+            (context, _) => ExecuteRpc(
+                CommandNames.Loader,
+                options,
+                context),
             allowFetch: true,
-            bind: parsed => state.Options.File =
+            bind: parsed => options.File =
                 parsed.GetValue(location));
         return command;
     }
@@ -121,18 +146,24 @@ internal static class RockUsbCommands {
                 "update image, firmware directory, or HTTP(S) URL."
         };
         var noReset = NoResetOption();
+        var options = new CommandOptions();
         command.Add(source);
         command.Add(noReset);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Flash,
+            (context, _) => ExecuteRpc(
+                CommandNames.Flash,
+                options,
+                context),
             allowLoader: true,
             allowFetch: true,
             bind: parsed => {
-                state.Options.Source =
+                options.Source =
                     parsed.GetValue(source);
-                state.Options.ResetAfterFlash =
+                options.ResetAfterFlash =
                     !parsed.GetValue(noReset);
             });
         return command;
@@ -149,22 +180,28 @@ internal static class RockUsbCommands {
         };
         var sector = SectorOption(required: false);
         var count = CountOption(required: false);
+        var options = new CommandOptions();
         command.Add(output);
         command.Add(sector);
         command.Add(count);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Read,
+            (context, _) => ExecuteRpc(
+                CommandNames.Read,
+                options,
+                context),
             allowLoader: true,
             bind: parsed => {
-                state.Options.File =
+                options.File =
                     parsed.GetValue(output);
-                state.Options.Sector =
+                options.Sector =
                     ValueParser.ParseOptionalUInt32(
                         "--sector",
                         parsed.GetValue(sector));
-                state.Options.Count =
+                options.Count =
                     ValueParser.ParseOptionalUInt16(
                         "--count",
                         parsed.GetValue(count));
@@ -196,6 +233,7 @@ internal static class RockUsbCommands {
         var sourceOffset = new Option<string?>("--source-offset") {
             Description = "Byte offset into the input file."
         };
+        var options = new CommandOptions();
         command.Add(input);
         command.Add(sector);
         command.Add(backup);
@@ -205,24 +243,29 @@ internal static class RockUsbCommands {
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Write,
+            (context, _) => ExecuteRpc(
+                CommandNames.Write,
+                options,
+                context),
             allowLoader: true,
             allowFetch: true,
             bind: parsed => {
-                state.Options.File =
+                options.File =
                     parsed.GetValue(input);
-                state.Options.Sector =
+                options.Sector =
                     ValueParser.ParseOptionalUInt32(
                         "--sector",
                         parsed.GetValue(sector));
-                state.Options.Backup = parsed.GetValue(backup);
-                state.Options.EraseBeforeWrite =
+                options.Backup = parsed.GetValue(backup);
+                options.EraseBeforeWrite =
                     !parsed.GetValue(noErase);
-                state.Options.WriteLength =
+                options.WriteLength =
                     ValueParser.ParseOptionalInt64(
                         "--length",
                         parsed.GetValue(length));
-                state.Options.WriteSourceOffset =
+                options.WriteSourceOffset =
                     ValueParser.ParseOptionalInt64(
                         "--source-offset",
                         parsed.GetValue(sourceOffset));
@@ -237,19 +280,25 @@ internal static class RockUsbCommands {
             "Erase a sector range.");
         var sector = SectorOption(required: true);
         var count = CountOption(required: true);
+        var options = new CommandOptions();
         command.Add(sector);
         command.Add(count);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Erase,
+            (context, _) => ExecuteRpc(
+                CommandNames.Erase,
+                options,
+                context),
             allowLoader: true,
             bind: parsed => {
-                state.Options.Sector =
+                options.Sector =
                     ValueParser.ParseOptionalUInt32(
                         "--sector",
                         parsed.GetValue(sector));
-                state.Options.Count =
+                options.Count =
                     ValueParser.ParseOptionalUInt16(
                         "--count",
                         parsed.GetValue(count));
@@ -267,14 +316,20 @@ internal static class RockUsbCommands {
             Description = string.Join(", ", StorageTypes)
         };
         storage.AcceptOnlyFromAmong(StorageTypes);
+        var options = new CommandOptions();
         command.Add(storage);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Storage,
+            (context, _) => ExecuteRpc(
+                CommandNames.Storage,
+                options,
+                context),
             allowLoader: true,
             bind: parsed => {
-                state.Options.Storage = ParseStorage(
+                options.Storage = ParseStorage(
                     parsed.GetValue(storage) ??
                     throw new ArgumentException(
                         "A storage type is required."));
@@ -293,64 +348,25 @@ internal static class RockUsbCommands {
             Description = "Reset mode."
         };
         modeArgument.AcceptOnlyFromAmong(ResetModes);
+        var options = new CommandOptions();
         command.Add(modeArgument);
         CommandOptionsBinder.AddRockUsbOptions(
             command,
             state,
+            options,
             CommandNames.Reset,
+            (context, _) => ExecuteRpc(
+                CommandNames.Reset,
+                options,
+                context),
             allowLoader: true,
             bind: parsed => {
                 var value = parsed.GetValue(modeArgument);
-                state.Options.Reset = value is null
+                options.Reset = value is null
                     ? ToolkitResetMode.Normal
                     : ParseReset(value);
             });
         return command;
     }
 
-    private static Option<string?> SectorOption(bool required) {
-        return new Option<string?>(
-            "--sector",
-            "-s") {
-            Required = required,
-            Description = "Starting sector, decimal or 0x-prefixed hex."
-        };
-    }
-
-    private static Option<string?> CountOption(bool required) {
-        return new Option<string?>(
-            "--count",
-            "-n") {
-            Required = required,
-            Description = "Number of 512-byte sectors."
-        };
-    }
-
-    private static Option<bool> NoResetOption() {
-        return new Option<bool>("--no-reset") {
-            Description = "Do not reset after flashing."
-        };
-    }
-
-    private static ToolkitResetMode ParseReset(string value) {
-        return value.ToLowerInvariant() switch {
-            "normal" => ToolkitResetMode.Normal,
-            "reset-mass-storage" => ToolkitResetMode.ResetMassStorage,
-            "power-off" => ToolkitResetMode.PowerOff,
-            "reset-mask-rom" => ToolkitResetMode.ResetMaskRom,
-            "disconnect" => ToolkitResetMode.Disconnect,
-            _ => throw new ArgumentException(
-                $"Invalid reset mode '{value}'.")
-        };
-    }
-
-    private static ToolkitStorage ParseStorage(string value) {
-        return value.ToLowerInvariant() switch {
-            "emmc" => ToolkitStorage.Emmc,
-            "sd-card" => ToolkitStorage.SdCard,
-            "spi-nor" => ToolkitStorage.SpiNor,
-            _ => throw new ArgumentException(
-                $"Invalid storage '{value}'.")
-        };
-    }
 }

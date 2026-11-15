@@ -5,12 +5,13 @@ using Ampheck.RockchipToolkit.Cli.Infrastructure;
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
 internal static class CommandLine {
-    public static ParsedCommand? Parse(
+    public static CliInvocation? Parse(
         string[] args,
         TextWriter output) {
         return WithEnglishCli(() => {
             var state = new CommandParseState();
             var root = CreateRoot(state, output);
+            state.Arguments = args;
             var parsed = root.Parse(args);
             if (parsed.Errors.Count > 0) {
                 if (CommandSuggestion.Find(root, args) is { } suggestion) {
@@ -33,22 +34,12 @@ internal static class CommandLine {
                 return null;
             }
 
-            if (state.Command is null) {
+            if (state.Invocation is null) {
                 throw new ArgumentException(
                     "A command is required. Use --help to list commands.");
             }
 
-            var separator = Array.IndexOf(args, "--");
-            if (state.Command == CommandNames.AdbShell &&
-                state.Options.AdbShellCommand is null &&
-                separator >= 0) {
-                state.Options.AdbShellArguments =
-                    args[(separator + 1)..];
-            }
-
-            return new ParsedCommand(
-                state.Command,
-                state.Options);
+            return state.Invocation;
         });
     }
 

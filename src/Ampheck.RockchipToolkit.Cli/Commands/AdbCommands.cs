@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Execution;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
@@ -23,32 +24,56 @@ internal static class AdbCommands {
         var reboot = new Command(
             "reboot",
             "Reboot an ADB device. Defaults to normal mode.");
+        var rebootOptions = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             reboot,
             state,
-            CommandNames.AdbRebootSystem);
+            rebootOptions,
+            CommandNames.AdbRebootSystem,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbRebootSystem,
+                rebootOptions,
+                context));
         var rebootNormal = new Command(
             "normal",
             "Reboot into the system.");
         rebootNormal.Aliases.Add("system");
+        var normalOptions = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             rebootNormal,
             state,
-            CommandNames.AdbRebootSystem);
+            normalOptions,
+            CommandNames.AdbRebootSystem,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbRebootSystem,
+                normalOptions,
+                context));
         var rebootRecovery = new Command(
             "recovery",
             "Reboot into recovery mode.");
+        var recoveryOptions = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             rebootRecovery,
             state,
-            CommandNames.AdbRebootRecovery);
+            recoveryOptions,
+            CommandNames.AdbRebootRecovery,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbRebootRecovery,
+                recoveryOptions,
+                context));
         var rebootLoader = new Command(
             "loader",
             "Reboot into RockUSB Loader mode.");
+        var loaderOptions = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             rebootLoader,
             state,
+            loaderOptions,
             CommandNames.AdbRebootLoader,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbRebootLoader,
+                loaderOptions,
+                context),
             includeLoaderFilters: true);
         reboot.Add(rebootNormal);
         reboot.Add(rebootRecovery);
@@ -62,10 +87,16 @@ internal static class AdbCommands {
         var command = new Command(
             "devices",
             "List devices known to the official ADB server.");
+        var options = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             command,
             state,
-            CommandNames.AdbDevices);
+            options,
+            CommandNames.AdbDevices,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbDevices,
+                options,
+                context));
         return command;
     }
 
@@ -88,10 +119,16 @@ internal static class AdbCommands {
         };
         command.Add(commandArgument);
         command.Add(commandOption);
+        var options = new CommandOptions();
         CommandOptionsBinder.AddAdbOptions(
             command,
             state,
+            options,
             CommandNames.AdbShell,
+            (context, _) => ExecuteRpc(
+                CommandNames.AdbShell,
+                options,
+                context),
             bind: parsed => {
                 var values =
                     parsed.GetValue(commandArgument) ?? [];
@@ -103,12 +140,20 @@ internal static class AdbCommands {
                     ];
                 }
 
-                state.Options.AdbShellCommand =
+                options.AdbShellCommand =
                     parsed.GetValue(commandOption);
-                state.Options.AdbShellArguments =
-                    state.Options.AdbShellCommand is null
+                options.AdbShellArguments =
+                    options.AdbShellCommand is null
                         ? [.. values]
                         : [];
+                var separator = Array.IndexOf(
+                    state.Arguments,
+                    "--");
+                if (separator >= 0 &&
+                    options.AdbShellCommand is null) {
+                    options.AdbShellArguments =
+                        state.Arguments[(separator + 1)..];
+                }
             });
         return command;
     }
@@ -121,18 +166,36 @@ internal static class AdbCommands {
         var command = new Command(name, description);
         var source = new Argument<string>("source");
         var destination = new Argument<string>("destination");
+        var options = new CommandOptions();
         command.Add(source);
         command.Add(destination);
         CommandOptionsBinder.AddAdbOptions(
             command,
             state,
+            options,
             canonicalCommand,
+            (context, _) => ExecuteRpc(
+                canonicalCommand,
+                options,
+                context),
             bind: parsed => {
-                state.Options.AdbSource =
+                options.AdbSource =
                     parsed.GetValue(source);
-                state.Options.AdbDestination =
+                options.AdbDestination =
                     parsed.GetValue(destination);
             });
         return command;
+    }
+
+    private static Task<int> ExecuteRpc(
+        string command,
+        CommandOptions options,
+        CliCommandContext context) {
+        return AdbCommandRunner.ExecuteAsync(
+            command,
+            options,
+            context.Endpoint!,
+            context.Logger,
+            context.Console);
     }
 }

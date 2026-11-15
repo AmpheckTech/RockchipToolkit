@@ -13,11 +13,7 @@ public sealed class ServerTools(ToolkitRpcClient client) {
     [Description("Get toolkit server identity and available RPC methods.")]
     public async Task<ServerInfoResult> GetServerInfo(
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            EmptyParams,
-            ServerInfoResult>(
-                JsonRpcMethods.ServerInfo,
-                new EmptyParams(),
-                cancellationToken: cancellationToken);
+        return await client.GetServerInfoAsync(
+            cancellationToken);
     }
 }

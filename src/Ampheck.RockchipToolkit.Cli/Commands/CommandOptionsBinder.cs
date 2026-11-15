@@ -16,7 +16,9 @@ internal static class CommandOptionsBinder {
     public static void AddRockUsbOptions(
         Command command,
         CommandParseState state,
+        CommandOptions options,
         string canonicalCommand,
+        Func<CliCommandContext, CancellationToken, Task<int>> execute,
         bool allowLoader = false,
         bool allowFetch = false,
         Action<ParseResult>? bind = null) {
@@ -61,23 +63,26 @@ internal static class CommandOptionsBinder {
         }
 
         command.SetAction(parsed => {
-            state.Command = canonicalCommand;
-            state.Options.Transport = ParseTransport(
+            options.Transport = ParseTransport(
                 parsed.GetValue(transport) ?? "auto");
-            state.Options.VendorId = ValueParser.ParseOptionalUInt16(
+            options.VendorId = ValueParser.ParseOptionalUInt16(
                 "--vid",
                 parsed.GetValue(vid));
-            state.Options.ProductId = ValueParser.ParseOptionalUInt16(
+            options.ProductId = ValueParser.ParseOptionalUInt16(
                 "--pid",
                 parsed.GetValue(pid));
-            state.Options.FetchLocation = ParseFetchLocation(
+            options.FetchLocation = ParseFetchLocation(
                 fetch is null
                     ? null
                     : parsed.GetValue(fetch));
-            state.Options.Loader = loader is null
+            options.Loader = loader is null
                 ? null
                 : parsed.GetValue(loader);
             bind?.Invoke(parsed);
+            state.Invocation = new CliInvocation(
+                canonicalCommand,
+                RequiresServer: true,
+                execute);
             return 0;
         });
     }
@@ -85,7 +90,9 @@ internal static class CommandOptionsBinder {
     public static void AddAdbOptions(
         Command command,
         CommandParseState state,
+        CommandOptions options,
         string canonicalCommand,
+        Func<CliCommandContext, CancellationToken, Task<int>> execute,
         bool includeLoaderFilters = false,
         Action<ParseResult>? bind = null) {
         var serial = new Option<string?>(
@@ -113,19 +120,22 @@ internal static class CommandOptionsBinder {
         }
 
         command.SetAction(parsed => {
-            state.Command = canonicalCommand;
-            state.Options.AdbSerial = parsed.GetValue(serial);
-            state.Options.VendorId = vid is null
+            options.AdbSerial = parsed.GetValue(serial);
+            options.VendorId = vid is null
                 ? null
                 : ValueParser.ParseOptionalUInt16(
                     "--vid",
                     parsed.GetValue(vid));
-            state.Options.ProductId = pid is null
+            options.ProductId = pid is null
                 ? null
                 : ValueParser.ParseOptionalUInt16(
                     "--pid",
                     parsed.GetValue(pid));
             bind?.Invoke(parsed);
+            state.Invocation = new CliInvocation(
+                canonicalCommand,
+                RequiresServer: true,
+                execute);
             return 0;
         });
     }
@@ -133,15 +143,20 @@ internal static class CommandOptionsBinder {
     public static void AddSerialEndpointOptions(
         Command command,
         CommandParseState state,
+        CommandOptions options,
         string canonicalCommand,
+        Func<CliCommandContext, CancellationToken, Task<int>> execute,
         Action<ParseResult>? bind = null) {
         var verbose = new Option<bool>("--verbose", "-v") {
             Description = "Enable informational and debug logs."
         };
         command.Add(verbose);
         command.SetAction(parsed => {
-            state.Command = canonicalCommand;
             bind?.Invoke(parsed);
+            state.Invocation = new CliInvocation(
+                canonicalCommand,
+                RequiresServer: true,
+                execute);
             return 0;
         });
     }

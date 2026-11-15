@@ -1,13 +1,10 @@
-using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 
 internal static class ToolkitDiscoveryCommandRunner {
     public static async Task<int> RunAsync(
-        CommandOptions options) {
-        var timeout = TimeSpan.FromSeconds(
-            options.DiscoverySeconds ?? 2);
+        TimeSpan timeout) {
         var servers = await ToolkitDiscoveryClient.DiscoverAsync(
                 timeout)
             .ConfigureAwait(false);

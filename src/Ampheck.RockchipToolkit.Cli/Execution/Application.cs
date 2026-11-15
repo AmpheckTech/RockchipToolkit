@@ -4,7 +4,6 @@ using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Cli.Infrastructure;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
-using Ampheck.RockchipToolkit.Server;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
@@ -74,122 +73,35 @@ internal static class Application {
                 return 0;
             }
 
-            var command = invocation.Command;
-            var options = invocation.Options;
-            if (command == CommandNames.Completion) {
-                Console.Out.Write(CompletionScripts.Get(
-                    options.CompletionShell!));
-                Console.Out.Flush();
-                return 0;
-            }
-
             logger.LogDebug(
-                "Starting command {Command} with transport {Transport}",
-                command,
-                options.Transport);
-
+                "Starting command {Command}",
+                invocation.Command);
             var startedAt = Stopwatch.GetTimestamp();
-            if (command == CommandNames.Discover) {
-                return await ToolkitDiscoveryCommandRunner.RunAsync(
-                        options)
-                    .ConfigureAwait(false);
-            }
-
-            if (command == CommandNames.ServerNodaemon) {
-                await RunServerAsync(
-                        options,
-                        loggerFactory,
-                        logger,
-                        daemon.StatePath)
-                    .ConfigureAwait(false);
-                return 0;
-            }
-
-            if (command == CommandNames.ServerStart) {
-                await LocalServerManager.StartAsync(
+            ToolkitEndpoint? endpoint = null;
+            if (invocation.RequiresServer) {
+                endpoint = await EnsureServerAsync(
                         verboseRequested,
                         console)
                     .ConfigureAwait(false);
-                return 0;
             }
 
-            if (command == CommandNames.ServerStop) {
-                await LocalServerManager.StopAsync(console)
-                    .ConfigureAwait(false);
-                return 0;
-            }
-
-            if (command == CommandNames.ServerStatus) {
-                await LocalServerManager.ShowStatusAsync(console)
-                    .ConfigureAwait(false);
-                return 0;
-            }
-
-            if (command is CommandNames.ImageUnpack or CommandNames.ImagePack) {
-                return await ImageCommandRunner.RunAsync(
-                        command,
-                        options,
-                        console)
-                    .ConfigureAwait(false);
-            }
-
-            if (string.IsNullOrWhiteSpace(
-                    Environment.GetEnvironmentVariable(
-                        "ARKT_SERVER")) &&
-                string.IsNullOrWhiteSpace(
-                    options.ServerEndpoint)) {
-                await LocalServerManager.EnsureRunningAsync(
-                        verboseRequested,
-                        console)
-                    .ConfigureAwait(false);
-                options.ServerEndpoint =
-                    ToolkitServerDefaults.Endpoint;
-            }
-
-            if (command.StartsWith(
-                CommandNames.AdbPrefix,
-                StringComparison.Ordinal)) {
-                var adbEndpoint =
-                    await ToolkitEndpointResolver.ResolveAsync(
-                            options,
-                            CancellationToken.None)
-                        .ConfigureAwait(false) ??
-                    throw new InvalidOperationException(
-                        "No toolkit server endpoint is available.");
-                options.ServerEndpoint = adbEndpoint.HostPort;
-                var adbResult = await AdbCommandRunner.ExecuteAsync(
-                        command,
-                        options,
-                        logger,
-                        console)
-                    .ConfigureAwait(false);
-                logger.LogInformation(
-                    "Command {Command} completed in {ElapsedMilliseconds:F1} ms",
-                    command,
-                    Stopwatch.GetElapsedTime(startedAt)
-                        .TotalMilliseconds);
-                return adbResult;
-            }
-
-            var endpoint =
-                await ToolkitEndpointResolver.ResolveAsync(
-                        options,
-                        CancellationToken.None)
-                    .ConfigureAwait(false) ??
-                throw new InvalidOperationException(
-                    "No toolkit server endpoint is available.");
-            options.ServerEndpoint = endpoint.HostPort;
-            var result = await ToolkitClientCommandRunner.RunAsync(
-                    command,
-                    options,
-                    logger,
-                    console)
+            var context = new CliCommandContext(
+                verboseRequested,
+                daemon.StatePath,
+                loggerFactory,
+                logger,
+                console,
+                endpoint,
+                CancellationToken.None);
+            var result = await invocation.Execute(
+                    context,
+                    CancellationToken.None)
                 .ConfigureAwait(false);
-
             logger.LogInformation(
                 "Command {Command} completed in {ElapsedMilliseconds:F1} ms",
-                command,
-                Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+                invocation.Command,
+                Stopwatch.GetElapsedTime(startedAt)
+                    .TotalMilliseconds);
             return result;
         } catch (Exception error) {
             if (verboseRequested) {
@@ -202,71 +114,26 @@ internal static class Application {
         }
     }
 
-    private static async Task RunServerAsync(
-        CommandOptions options,
-        ILoggerFactory loggerFactory,
-        ILogger logger,
-        string? statePath) {
-        var endpoint = ToolkitEndpoint.Parse(
-            options.ServerListen
-            ?? throw new ArgumentException(
-                "A server listen endpoint is required."));
-        var token = options.ServerAccessToken ??
-            Environment.GetEnvironmentVariable(
-                "ARKT_SERVER_TOKEN");
-        var instanceId = Guid.NewGuid().ToString("D");
-        var hostName = string.IsNullOrWhiteSpace(
-                options.ServerHostName)
-            ? Environment.MachineName
-            : options.ServerHostName;
-        var idleSeconds = options.ServerIdleSeconds ?? 0;
-        var limits = CreateTransferLimits(options);
-        var serialHistoryKiB =
-            options.ServerSerialHistoryKiB ?? 256;
-        var stateStore =
-            new LocalServerStateStore(statePath);
-        if (serialHistoryKiB <= 0) {
-            throw new ArgumentException(
-                "--serial-history-kib must be greater than zero.");
-        }
-        Console.WriteLine(
-            $"server instance: {instanceId}");
-        Console.WriteLine(
-            $"server hostname: {hostName}");
-        Console.WriteLine(
-            $"server endpoint: {endpoint}");
-        using var stop = new CancellationTokenSource();
-        ConsoleCancelEventHandler handler = (_, eventArgs) => {
-            eventArgs.Cancel = true;
-            stop.Cancel();
-        };
-        Console.CancelKeyPress += handler;
-        try {
-            await using var server = new ToolkitHost(
-                new ToolkitHostOptions {
-                    Endpoint = endpoint,
-                    Token = token,
-                    InstanceId = instanceId,
-                    HostName = hostName,
-                    AdbPort = AdbEnvironment.GetConfiguredPort(),
-                    TransferLimits = limits,
-                    SerialHistoryBytes =
-                        checked(serialHistoryKiB * 1024),
-                    IdleTimeout = idleSeconds <= 0
-                        ? Timeout.InfiniteTimeSpan
-                        : TimeSpan.FromSeconds(idleSeconds),
-                    OnListening = stateStore.WriteCurrentProcess
-                },
-                loggerFactory,
-                loggerFactory.CreateLogger<ToolkitHost>());
-            logger.LogInformation(
-                "Toolkit server started at {Endpoint}",
-                endpoint);
-            await server.RunAsync(stop.Token)
+    private static async Task<ToolkitEndpoint> EnsureServerAsync(
+        bool verbose,
+        ConsoleRenderer console) {
+        if (string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(
+                    "ARKT_SERVER"))) {
+            await LocalServerManager.EnsureRunningAsync(
+                    verbose,
+                    console)
                 .ConfigureAwait(false);
-        } finally {
-            Console.CancelKeyPress -= handler;
         }
+
+        var endpoint =
+            await ToolkitEndpointResolver.ResolveAsync(
+                    requestedEndpoint: null,
+                    CancellationToken.None)
+                .ConfigureAwait(false) ??
+            throw new InvalidOperationException(
+                "No toolkit server endpoint is available.");
+        return endpoint;
     }
 
     private static bool HasOption(
@@ -277,7 +144,9 @@ internal static class Application {
                 return false;
             }
 
-            if (names.Contains(argument, StringComparer.OrdinalIgnoreCase)) {
+            if (names.Contains(
+                    argument,
+                    StringComparer.OrdinalIgnoreCase)) {
                 return true;
             }
         }
@@ -286,8 +155,12 @@ internal static class Application {
     }
 
     private static bool IsHelpCommand(string argument) {
-        return argument.Equals("help", StringComparison.OrdinalIgnoreCase) ||
-            argument.Equals("h", StringComparison.OrdinalIgnoreCase);
+        return argument.Equals(
+                "help",
+                StringComparison.OrdinalIgnoreCase) ||
+            argument.Equals(
+                "h",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsRootHelpOption(string argument) {
@@ -298,21 +171,5 @@ internal static class Application {
         if (console.IsInteractive) {
             Motd.Write(Console.Out);
         }
-    }
-
-    private static ToolkitTransferLimits CreateTransferLimits(
-        CommandOptions options) {
-        return new ToolkitTransferLimits {
-            MaximumBlobBytes = ToBytes(
-                options.ServerMaxBlobMiB ?? 32 * 1024)
-        };
-    }
-
-    private static long ToBytes(int mebibytes) {
-        return mebibytes > 0
-            ? checked((long)mebibytes * 1024 * 1024)
-            : throw new ArgumentOutOfRangeException(
-                nameof(mebibytes),
-                "Server transfer limits must be greater than zero.");
     }
 }

@@ -10,12 +10,9 @@ internal static partial class ToolkitClientCommandRunner {
     public static async Task<int> RunAsync(
         string command,
         CommandOptions options,
+        ToolkitEndpoint endpoint,
         ILogger logger,
         ConsoleRenderer console) {
-        var endpoint = ToolkitEndpoint.Parse(
-            options.ServerEndpoint ??
-            throw new ArgumentException(
-                "A toolkit server endpoint is required."));
         var token = Environment.GetEnvironmentVariable(
             "ARKT_SERVER_TOKEN");
         var clientName = Environment.GetEnvironmentVariable(

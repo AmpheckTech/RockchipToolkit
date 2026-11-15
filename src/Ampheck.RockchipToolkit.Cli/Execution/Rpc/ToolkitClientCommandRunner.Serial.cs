@@ -10,12 +10,7 @@ internal static partial class ToolkitClientCommandRunner {
     private static async Task<int> RunSerialListAsync(
         ToolkitRpcClient client,
         Action<TaskEventNotification> report) {
-        var result = await client.RequestAsync<
-            EmptyParams,
-            SerialListResult>(
-                JsonRpcMethods.SerialList,
-                new EmptyParams(),
-                report)
+        var result = await client.ListSerialPortsAsync()
             .ConfigureAwait(false);
         foreach (var port in result.Ports) {
             Console.WriteLine(port);
@@ -28,10 +23,7 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        await client.RequestAsync<
-            SerialOpenParams,
-            EmptyResult>(
-                JsonRpcMethods.SerialOpen,
+        await client.OpenSerialPortAsync(
                 new SerialOpenParams {
                     PortName = RequireSerialPort(options),
                     Settings = new SerialPortSettings {
@@ -44,8 +36,7 @@ internal static partial class ToolkitClientCommandRunner {
                         DtrEnable = options.SerialDtrEnable,
                         RtsEnable = options.SerialRtsEnable
                     }
-                },
-                report)
+                })
             .ConfigureAwait(false);
         Console.WriteLine(
             $"Serial port {options.SerialPort} opened");
@@ -56,14 +47,10 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        var result = await client.RequestAsync<
-            SerialCloseParams,
-            SerialCloseResult>(
-                JsonRpcMethods.SerialClose,
+        var result = await client.CloseSerialPortAsync(
                 new SerialCloseParams {
                     PortName = RequireSerialPort(options)
-                },
-                report)
+                })
             .ConfigureAwait(false);
         Console.WriteLine(
             result.Closed
@@ -76,14 +63,10 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        await client.RequestAsync<
-            SerialPortParams,
-            SerialClearResult>(
-                JsonRpcMethods.SerialClear,
+        await client.ClearSerialBufferAsync(
                 new SerialPortParams {
                     PortName = RequireSerialPort(options)
-                },
-                report)
+                })
             .ConfigureAwait(false);
         Console.WriteLine(
             $"Serial buffer cleared for {options.SerialPort}");
@@ -94,10 +77,7 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        var file = await client.RequestAsync<
-            SerialHistoryParams,
-            FileReference>(
-                JsonRpcMethods.SerialHistory,
+        var file = await client.ReadSerialHistoryAsync(
                 new SerialHistoryParams {
                     PortName = RequireSerialPort(options),
                     MaximumBytes = options.SerialHistoryBytes ??
@@ -132,16 +112,12 @@ internal static partial class ToolkitClientCommandRunner {
         CommandOptions options,
         ConsoleRenderer console,
         Action<TaskEventNotification> report) {
-        using var socket = await client.OpenStreamAsync<
-            SerialTerminalParams>(
-                JsonRpcMethods.SerialTerminal,
+        using var socket = await client.OpenSerialTerminalAsync(
                 new SerialTerminalParams {
                     PortName = RequireSerialPort(options),
                     HistoryBytes = options.SerialHistoryBytes ??
                         256 * 1024
                 },
-                "/api/serial",
-                "arkt.serial.v1",
                 report)
             .ConfigureAwait(false);
         using var stop = new CancellationTokenSource();

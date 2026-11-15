@@ -61,25 +61,22 @@ public sealed class StorageTools(ToolkitRpcClient client) {
                     cancellationToken);
             }
 
-            await client.RequestAsync<
-                FirmwareFlashParams,
-                EmptyResult>(
-                    JsonRpcMethods.FirmwareFlash,
-                    new FirmwareFlashParams {
-                        Target = ToolSupport.CreateTarget(
+            await client.FlashFirmwareAsync(
+                new FirmwareFlashParams {
+                    Target = ToolSupport.CreateTarget(
                             transport,
                             vendorId,
                             productId),
-                        FirmwareBlobId = firmware?.BlobId,
-                        FirmwareUrl = firmwareUrl,
-                        FirmwareServerPath = firmware?.ServerPath,
-                        LoaderBlobId = loader?.BlobId,
-                        LoaderUrl = loaderUrl,
-                        LoaderServerPath = loader?.ServerPath,
-                        ResetAfterFlash = resetAfterFlash
-                    },
-                    new ToolProgress(progress).Report,
-                    cancellationToken);
+                    FirmwareBlobId = firmware?.BlobId,
+                    FirmwareUrl = firmwareUrl,
+                    FirmwareServerPath = firmware?.ServerPath,
+                    LoaderBlobId = loader?.BlobId,
+                    LoaderUrl = loaderUrl,
+                    LoaderServerPath = loader?.ServerPath,
+                    ResetAfterFlash = resetAfterFlash
+                },
+                new ToolProgress(progress).Report,
+                cancellationToken);
             return new TextResult {
                 Text = "Flash complete."
             };
@@ -110,23 +107,20 @@ public sealed class StorageTools(ToolkitRpcClient client) {
         ushort? productId = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default) {
-        var file = await client.RequestAsync<
-            StorageReadParams,
-            FileReference>(
-                JsonRpcMethods.StorageRead,
-                new StorageReadParams {
-                    Target = ToolSupport.CreateTarget(
+        var file = await client.ReadStorageAsync(
+            new StorageReadParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId),
-                    Sector = sector,
-                    Count = count,
-                    OutputServerPath = client.UseServerPaths
+                Sector = sector,
+                Count = count,
+                OutputServerPath = client.UseServerPaths
                         ? Path.GetFullPath(destinationPath)
                         : null
-                },
-                new ToolProgress(progress).Report,
-                cancellationToken);
+            },
+            new ToolProgress(progress).Report,
+            cancellationToken);
         try {
             return await ToolSupport.SaveOutputAsync(
                 client,
@@ -170,30 +164,27 @@ public sealed class StorageTools(ToolkitRpcClient client) {
             progress,
             cancellationToken);
         try {
-            var result = await client.RequestAsync<
-                StorageWriteParams,
-                StorageWriteResult>(
-                    JsonRpcMethods.StorageWrite,
-                    new StorageWriteParams {
-                        Target = ToolSupport.CreateTarget(
+            var result = await client.WriteStorageAsync(
+                new StorageWriteParams {
+                    Target = ToolSupport.CreateTarget(
                             transport,
                             vendorId,
                             productId),
-                        BlobId = input.BlobId,
-                        ServerPath = input.ServerPath,
-                        Sector = sector,
-                        Length = length,
-                        SourceOffset = sourceOffset,
-                        EraseBeforeWrite = eraseBeforeWrite,
-                        Backup = backupPath is not null,
-                        BackupServerPath =
+                    BlobId = input.BlobId,
+                    ServerPath = input.ServerPath,
+                    Sector = sector,
+                    Length = length,
+                    SourceOffset = sourceOffset,
+                    EraseBeforeWrite = eraseBeforeWrite,
+                    Backup = backupPath is not null,
+                    BackupServerPath =
                             client.UseServerPaths &&
                             backupPath is not null
                                 ? Path.GetFullPath(backupPath)
                                 : null
-                    },
-                    new ToolProgress(progress).Report,
-                    cancellationToken);
+                },
+                new ToolProgress(progress).Report,
+                cancellationToken);
             string? savedBackup = null;
             if (result.Backup is { } backup &&
                 backupPath is not null) {
@@ -237,8 +228,7 @@ public sealed class StorageTools(ToolkitRpcClient client) {
         ushort? productId = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<StorageEraseParams, EmptyResult>(
-            JsonRpcMethods.StorageErase,
+        await client.EraseStorageAsync(
             new StorageEraseParams {
                 Target = ToolSupport.CreateTarget(
                     transport,
@@ -261,8 +251,7 @@ public sealed class StorageTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<StorageSelectParams, EmptyResult>(
-            JsonRpcMethods.StorageSelect,
+        await client.SelectStorageAsync(
             new StorageSelectParams {
                 Target = ToolSupport.CreateTarget(
                     transport,
@@ -270,7 +259,7 @@ public sealed class StorageTools(ToolkitRpcClient client) {
                     productId),
                 Storage = ParseStorage(storage)
             },
-            cancellationToken: cancellationToken);
+            cancellationToken);
         return new TextResult {
             Text = $"Storage selected: {storage}."
         };

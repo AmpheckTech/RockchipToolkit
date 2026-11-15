@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Execution;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
@@ -74,18 +75,25 @@ internal static class ImageCommands {
         var verbose = new Option<bool>("--verbose", "-v") {
             Description = "Enable informational and debug logs."
         };
+        var options = new CommandOptions();
         command.Add(force);
         command.Add(verbose);
         command.SetAction(parsed => {
-            state.Command = canonicalCommand;
-            state.Options.ImageInput = parsed.GetValue(input) ??
+            options.ImageInput = parsed.GetValue(input) ??
                 throw new ArgumentException("An input path is required.");
-            state.Options.ImageOutput = parsed.GetValue(output) ??
+            options.ImageOutput = parsed.GetValue(output) ??
                 throw new ArgumentException("An output path is required.");
-            state.Options.ImageForce = parsed.GetValue(force);
-            state.Options.ImageChip = chip is null
+            options.ImageForce = parsed.GetValue(force);
+            options.ImageChip = chip is null
                 ? null
                 : parsed.GetValue(chip);
+            state.Invocation = new CliInvocation(
+                canonicalCommand,
+                RequiresServer: false,
+                (context, _) => ImageCommandRunner.RunAsync(
+                    canonicalCommand,
+                    options,
+                    context.Console));
             return 0;
         });
     }

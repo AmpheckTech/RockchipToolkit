@@ -1,7 +1,7 @@
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
 internal sealed class CommandParseState {
-    public string? Command { get; set; }
+    public CliInvocation? Invocation { get; set; }
     public bool HelpDisplayed { get; set; }
-    public CommandOptions Options { get; } = new();
+    public string[] Arguments { get; set; } = [];
 }

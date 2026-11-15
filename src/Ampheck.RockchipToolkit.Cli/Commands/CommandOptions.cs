@@ -18,7 +18,6 @@ internal sealed class CommandOptions {
     public string? AdbSource { get; set; }
     public string? AdbDestination { get; set; }
     public string? CompletionShell { get; set; }
-    public string? ServerEndpoint { get; set; }
     public string? ServerListen { get; set; }
     public string? ServerAccessToken { get; set; }
     public string? ServerHostName { get; set; }

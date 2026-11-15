@@ -14,14 +14,11 @@ public sealed class TaskTools(ToolkitRpcClient client) {
     public async Task<TaskListResult> ListTasks(
         bool includeCompleted = false,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            TaskListParams,
-            TaskListResult>(
-                JsonRpcMethods.TaskList,
-                new TaskListParams {
-                    IncludeCompleted = includeCompleted
-                },
-                cancellationToken: cancellationToken);
+        return await client.ListTasksAsync(
+            new TaskListParams {
+                IncludeCompleted = includeCompleted
+            },
+            cancellationToken);
     }
 
     [McpServerTool(
@@ -32,10 +29,9 @@ public sealed class TaskTools(ToolkitRpcClient client) {
     public async Task<TaskInfo> GetTask(
         string taskId,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<TaskGetParams, TaskInfo>(
-            JsonRpcMethods.TaskGet,
+        return await client.GetTaskAsync(
             new TaskGetParams { TaskId = taskId },
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     [McpServerTool(
@@ -46,11 +42,8 @@ public sealed class TaskTools(ToolkitRpcClient client) {
     public async Task<TaskCancelResult> CancelTask(
         string taskId,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            TaskCancelParams,
-            TaskCancelResult>(
-                JsonRpcMethods.TaskCancel,
-                new TaskCancelParams { TaskId = taskId },
-                cancellationToken: cancellationToken);
+        return await client.CancelTaskAsync(
+            new TaskCancelParams { TaskId = taskId },
+            cancellationToken);
     }
 }

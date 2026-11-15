@@ -19,10 +19,7 @@ internal static partial class ToolkitClientCommandRunner {
             .ConfigureAwait(false);
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        await client.RequestAsync<
-            FirmwareFlashParams,
-            EmptyResult>(
-                JsonRpcMethods.FirmwareFlash,
+        await client.FlashFirmwareAsync(
                 new FirmwareFlashParams {
                     Target = target,
                     FirmwareBlobId = firmware.BlobId,
@@ -54,10 +51,7 @@ internal static partial class ToolkitClientCommandRunner {
             !IsHttpLocation(options.File!)
                 ? Path.GetFullPath(options.File!)
                 : null;
-        var file = await client.RequestAsync<
-            StorageReadParams,
-            FileReference>(
-                JsonRpcMethods.StorageRead,
+        var file = await client.ReadStorageAsync(
                 new StorageReadParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -103,10 +97,7 @@ internal static partial class ToolkitClientCommandRunner {
             .ConfigureAwait(false);
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var result = await client.RequestAsync<
-            StorageWriteParams,
-            StorageWriteResult>(
-                JsonRpcMethods.StorageWrite,
+        var result = await client.WriteStorageAsync(
                 new StorageWriteParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -158,10 +149,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        await client.RequestAsync<
-            StorageEraseParams,
-            EmptyResult>(
-                JsonRpcMethods.StorageErase,
+        await client.EraseStorageAsync(
                 new StorageEraseParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -184,10 +172,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        await client.RequestAsync<
-            StorageSelectParams,
-            EmptyResult>(
-                JsonRpcMethods.StorageSelect,
+        await client.SelectStorageAsync(
                 new StorageSelectParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -196,8 +181,7 @@ internal static partial class ToolkitClientCommandRunner {
                     Storage = options.Storage ??
                         throw new ArgumentException(
                             "A storage type is required.")
-                },
-                report)
+                })
             .ConfigureAwait(false);
         Console.WriteLine(
             $"Storage changed to {options.Storage}");
@@ -209,15 +193,11 @@ internal static partial class ToolkitClientCommandRunner {
         CommandOptions options,
         DeviceTarget target,
         Action<TaskEventNotification> report) {
-        await client.RequestAsync<
-            DeviceResetParams,
-            EmptyResult>(
-                JsonRpcMethods.DeviceReset,
+        await client.ResetDeviceAsync(
                 new DeviceResetParams {
                     Target = target,
                     Mode = options.Reset
-                },
-                report)
+                })
             .ConfigureAwait(false);
         Console.WriteLine("Reset requested");
         return 0;

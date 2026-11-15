@@ -9,10 +9,7 @@ internal static partial class ToolkitClientCommandRunner {
         ToolkitRpcClient client,
         DeviceTarget target,
         Action<TaskEventNotification> report) {
-        var result = await client.RequestAsync<
-            DeviceListParams,
-            DeviceListResult>(
-                JsonRpcMethods.DeviceList,
+        var result = await client.ListDevicesAsync(
                 new DeviceListParams { Target = target },
                 report)
             .ConfigureAwait(false);
@@ -32,10 +29,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var result = await client.RequestAsync<
-            DeviceInfoParams,
-            DeviceInfoResult>(
-                JsonRpcMethods.DeviceInfo,
+        var result = await client.GetDeviceInfoAsync(
                 new DeviceInfoParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -57,10 +51,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var result = await client.RequestAsync<
-            DeviceChipInfoParams,
-            DeviceChipInfoResult>(
-                JsonRpcMethods.DeviceChipInfo,
+        var result = await client.GetChipInfoAsync(
                 new DeviceChipInfoParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -82,10 +73,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var result = await client.RequestAsync<
-            DeviceChipIdParams,
-            DeviceChipIdResult>(
-                JsonRpcMethods.DeviceChipId,
+        var result = await client.GetChipIdAsync(
                 new DeviceChipIdParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -106,10 +94,7 @@ internal static partial class ToolkitClientCommandRunner {
         Action<TaskEventNotification> report) {
         var loader = await PrepareLoaderAsync(payload, options)
             .ConfigureAwait(false);
-        var result = await client.RequestAsync<
-            DeviceCapabilityParams,
-            DeviceCapabilityResult>(
-                JsonRpcMethods.DeviceCapability,
+        var result = await client.GetCapabilitiesAsync(
                 new DeviceCapabilityParams {
                     Target = target,
                     LoaderBlobId = loader.BlobId,
@@ -134,10 +119,7 @@ internal static partial class ToolkitClientCommandRunner {
                 options.FetchLocation,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        await client.RequestAsync<
-            DeviceLoaderParams,
-            EmptyResult>(
-                JsonRpcMethods.DeviceLoader,
+        await client.LoadLoaderAsync(
                 new DeviceLoaderParams {
                     Target = target,
                     BlobId = input.BlobId,

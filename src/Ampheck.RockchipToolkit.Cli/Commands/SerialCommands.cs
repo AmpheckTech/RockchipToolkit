@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
@@ -23,10 +24,16 @@ internal static class SerialCommands {
         var command = new Command(
             "list",
             "List local or server serial ports.");
+        var options = new CommandOptions();
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
-            CommandNames.SerialList);
+            options,
+            CommandNames.SerialList,
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialList,
+                options,
+                context));
         return command;
     }
 
@@ -36,12 +43,18 @@ internal static class SerialCommands {
             "terminal",
             "Open an interactive serial terminal.");
         var port = PortArgument();
+        var options = new CommandOptions();
         command.Add(port);
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
+            options,
             CommandNames.SerialTerminal,
-            bind: parsed => state.Options.SerialPort =
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialTerminal,
+                options,
+                context),
+            bind: parsed => options.SerialPort =
                 parsed.GetValue(port) ??
                 throw new ArgumentException(
                     "A serial port is required."));
@@ -55,14 +68,20 @@ internal static class SerialCommands {
             "Open and retain a serial port.");
         var port = PortArgument();
         var serialOptions = new SerialOptionSet();
+        var options = new CommandOptions();
         command.Add(port);
         serialOptions.AddTo(command);
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
+            options,
             CommandNames.SerialOpen,
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialOpen,
+                options,
+                context),
             bind: parsed => serialOptions.Apply(
-                state.Options,
+                options,
                 parsed,
                 parsed.GetValue(port) ??
                 throw new ArgumentException(
@@ -76,12 +95,18 @@ internal static class SerialCommands {
             "close",
             "Close a retained serial port.");
         var port = PortArgument();
+        var options = new CommandOptions();
         command.Add(port);
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
+            options,
             CommandNames.SerialClose,
-            bind: parsed => state.Options.SerialPort =
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialClose,
+                options,
+                context),
+            bind: parsed => options.SerialPort =
                 parsed.GetValue(port) ??
                 throw new ArgumentException(
                     "A serial port is required."));
@@ -99,19 +124,25 @@ internal static class SerialCommands {
             Description = "Maximum bytes to print.",
             DefaultValueFactory = _ => 256 * 1024
         };
+        var options = new CommandOptions();
         command.Add(bytes);
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
+            options,
             CommandNames.SerialHistory,
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialHistory,
+                options,
+                context),
             bind: parsed => {
-                state.Options.SerialPort =
+                options.SerialPort =
                     parsed.GetValue(port) ??
                     throw new ArgumentException(
                         "A serial port is required.");
-                state.Options.SerialHistoryBytes =
+                options.SerialHistoryBytes =
                     parsed.GetValue(bytes);
-                if (state.Options.SerialHistoryBytes is not > 0) {
+                if (options.SerialHistoryBytes is not > 0) {
                     throw new ArgumentException(
                         "--bytes must be greater than zero.");
                 }
@@ -125,12 +156,18 @@ internal static class SerialCommands {
             "clear",
             "Clear retained output for an open serial port.");
         var port = PortArgument();
+        var options = new CommandOptions();
         command.Add(port);
         CommandOptionsBinder.AddSerialEndpointOptions(
             command,
             state,
+            options,
             CommandNames.SerialClear,
-            bind: parsed => state.Options.SerialPort =
+            (context, _) => ExecuteRpc(
+                CommandNames.SerialClear,
+                options,
+                context),
+            bind: parsed => options.SerialPort =
                 parsed.GetValue(port) ??
                 throw new ArgumentException(
                     "A serial port is required."));
@@ -143,4 +180,15 @@ internal static class SerialCommands {
         };
     }
 
+    private static Task<int> ExecuteRpc(
+        string command,
+        CommandOptions options,
+        CliCommandContext context) {
+        return ToolkitClientCommandRunner.RunAsync(
+            command,
+            options,
+            context.Endpoint!,
+            context.Logger,
+            context.Console);
+    }
 }

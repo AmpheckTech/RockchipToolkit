@@ -16,14 +16,11 @@ public sealed class AdbTools(ToolkitRpcClient client) {
         [Description("Optional ADB serial number.")]
         string? serialNumber = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            AdbDevicesParams,
-            AdbDevicesResult>(
-                JsonRpcMethods.AdbDevices,
-                new AdbDevicesParams {
-                    SerialNumber = serialNumber
-                },
-                cancellationToken: cancellationToken);
+        return await client.ListAdbDevicesAsync(
+            new AdbDevicesParams {
+                SerialNumber = serialNumber
+            },
+            cancellationToken);
     }
 
     [McpServerTool(Name = "adb_shell")]
@@ -34,8 +31,7 @@ public sealed class AdbTools(ToolkitRpcClient client) {
         string? serialNumber = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<AdbShellParams, TextResult>(
-            JsonRpcMethods.AdbShell,
+        return await client.ExecuteAdbShellAsync(
             new AdbShellParams {
                 SerialNumber = serialNumber,
                 Command = command
@@ -60,8 +56,7 @@ public sealed class AdbTools(ToolkitRpcClient client) {
             progress,
             cancellationToken);
         try {
-            await client.RequestAsync<AdbPushParams, EmptyResult>(
-                JsonRpcMethods.AdbPush,
+            await client.PushAdbFileAsync(
                 new AdbPushParams {
                     SerialNumber = serialNumber,
                     BlobId = input.BlobId,
@@ -92,19 +87,16 @@ public sealed class AdbTools(ToolkitRpcClient client) {
         string? serialNumber = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default) {
-        var file = await client.RequestAsync<
-            AdbPullParams,
-            FileReference>(
-                JsonRpcMethods.AdbPull,
-                new AdbPullParams {
-                    SerialNumber = serialNumber,
-                    Source = remotePath,
-                    DestinationServerPath = client.UseServerPaths
+        var file = await client.PullAdbFileAsync(
+            new AdbPullParams {
+                SerialNumber = serialNumber,
+                Source = remotePath,
+                DestinationServerPath = client.UseServerPaths
                         ? Path.GetFullPath(destinationPath)
                         : null
-                },
-                new ToolProgress(progress).Report,
-                cancellationToken);
+            },
+            new ToolProgress(progress).Report,
+            cancellationToken);
         try {
             return await ToolSupport.SaveOutputAsync(
                 client,
@@ -126,8 +118,7 @@ public sealed class AdbTools(ToolkitRpcClient client) {
         string mode = "normal",
         string? serialNumber = null,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<AdbRebootParams, EmptyResult>(
-            JsonRpcMethods.AdbReboot,
+        await client.RebootAdbDeviceAsync(
             new AdbRebootParams {
                 SerialNumber = serialNumber,
                 Mode = mode.ToLowerInvariant() switch {
@@ -139,7 +130,7 @@ public sealed class AdbTools(ToolkitRpcClient client) {
                         nameof(mode))
                 }
             },
-            cancellationToken: cancellationToken);
+            cancellationToken);
         return new TextResult {
             Text = $"ADB reboot requested: {mode}."
         };

@@ -15,12 +15,8 @@ public sealed class SerialTools(ToolkitRpcClient client) {
     [Description("List serial ports available on the toolkit server.")]
     public async Task<SerialListResult> ListPorts(
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            EmptyParams,
-            SerialListResult>(
-                JsonRpcMethods.SerialList,
-                new EmptyParams(),
-                cancellationToken: cancellationToken);
+        return await client.ListSerialPortsAsync(
+            cancellationToken);
     }
 
     [McpServerTool(Name = "open_serial_port")]
@@ -39,8 +35,7 @@ public sealed class SerialTools(ToolkitRpcClient client) {
         bool dtrEnable = true,
         bool rtsEnable = true,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<SerialOpenParams, EmptyResult>(
-            JsonRpcMethods.SerialOpen,
+        await client.OpenSerialPortAsync(
             new SerialOpenParams {
                 PortName = portName,
                 Settings = new SerialPortSettings {
@@ -53,7 +48,7 @@ public sealed class SerialTools(ToolkitRpcClient client) {
                     RtsEnable = rtsEnable
                 }
             },
-            cancellationToken: cancellationToken);
+            cancellationToken);
         return new TextResult {
             Text = $"Serial port {portName} opened."
         };
@@ -64,12 +59,9 @@ public sealed class SerialTools(ToolkitRpcClient client) {
     public async Task<TextResult> ClosePort(
         string portName,
         CancellationToken cancellationToken = default) {
-        var result = await client.RequestAsync<
-            SerialCloseParams,
-            SerialCloseResult>(
-                JsonRpcMethods.SerialClose,
-                new SerialCloseParams { PortName = portName },
-                cancellationToken: cancellationToken);
+        var result = await client.CloseSerialPortAsync(
+            new SerialCloseParams { PortName = portName },
+            cancellationToken);
         return new TextResult {
             Text = result.Closed
                 ? $"Serial port {portName} closed."
@@ -82,10 +74,9 @@ public sealed class SerialTools(ToolkitRpcClient client) {
     public async Task<TextResult> ClearBuffer(
         string portName,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<SerialPortParams, SerialClearResult>(
-            JsonRpcMethods.SerialClear,
+        await client.ClearSerialBufferAsync(
             new SerialPortParams { PortName = portName },
-            cancellationToken: cancellationToken);
+            cancellationToken);
         return new TextResult {
             Text = $"Serial buffer cleared for {portName}."
         };
@@ -102,18 +93,15 @@ public sealed class SerialTools(ToolkitRpcClient client) {
         int maximumBytes = 256 * 1024,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default) {
-        var file = await client.RequestAsync<
-            SerialHistoryParams,
-            FileReference>(
-                JsonRpcMethods.SerialHistory,
-                new SerialHistoryParams {
-                    PortName = portName,
-                    MaximumBytes = maximumBytes,
-                    OutputServerPath = client.UseServerPaths
+        var file = await client.ReadSerialHistoryAsync(
+            new SerialHistoryParams {
+                PortName = portName,
+                MaximumBytes = maximumBytes,
+                OutputServerPath = client.UseServerPaths
                         ? Path.GetFullPath(destinationPath)
                         : null
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
         try {
             return await ToolSupport.SaveOutputAsync(
                 client,

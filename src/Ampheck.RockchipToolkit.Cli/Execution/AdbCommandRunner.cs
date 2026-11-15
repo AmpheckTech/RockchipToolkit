@@ -14,12 +14,9 @@ internal static partial class AdbCommandRunner {
     public static async Task<int> ExecuteAsync(
         string command,
         CommandOptions options,
+        ToolkitEndpoint endpoint,
         ILogger logger,
         ConsoleRenderer console) {
-        var endpoint = ToolkitEndpoint.Parse(
-            options.ServerEndpoint ??
-            throw new ArgumentException(
-                "A toolkit server endpoint is required."));
         var token = Environment.GetEnvironmentVariable(
             "ARKT_SERVER_TOKEN");
         var clientName = Environment.GetEnvironmentVariable(
@@ -36,10 +33,7 @@ internal static partial class AdbCommandRunner {
             printer.Write(value);
         }
 
-        await client.RequestAsync<EmptyParams, EmptyResult>(
-                JsonRpcMethods.AdbServerEnsure,
-                new EmptyParams(),
-                ReportEvent)
+        await client.EnsureAdbServerAsync()
             .ConfigureAwait(false);
         return command switch {
             CommandNames.AdbDevices =>
@@ -103,14 +97,10 @@ internal static partial class AdbCommandRunner {
         ToolkitRpcClient client,
         CommandOptions options,
         Action<TaskEventNotification> report) {
-        var result = await client.RequestAsync<
-            AdbDevicesParams,
-            AdbDevicesResult>(
-                JsonRpcMethods.AdbDevices,
+        var result = await client.ListAdbDevicesAsync(
                 new AdbDevicesParams {
                     SerialNumber = options.AdbSerial
-                },
-                report)
+                })
             .ConfigureAwait(false);
         foreach (var device in result.Devices) {
             Console.WriteLine(
@@ -140,10 +130,7 @@ internal static partial class AdbCommandRunner {
         var command = options.AdbShellCommand ??
             AdbShellCommandBuilder.FromArguments(
                 options.AdbShellArguments);
-        var result = await client.RequestAsync<
-            AdbShellParams,
-            TextResult>(
-                JsonRpcMethods.AdbShell,
+        var result = await client.ExecuteAdbShellAsync(
                 new AdbShellParams {
                     SerialNumber = options.AdbSerial,
                     Command = command
@@ -165,14 +152,10 @@ internal static partial class AdbCommandRunner {
         CommandOptions options,
         ConsoleRenderer console,
         Action<TaskEventNotification> report) {
-        using var socket = await client.OpenStreamAsync<
-            AdbShellSessionParams>(
-                JsonRpcMethods.AdbShellSession,
+        using var socket = await client.OpenAdbShellAsync(
                 new AdbShellSessionParams {
                     SerialNumber = options.AdbSerial
                 },
-                "/api/adb",
-                "arkt.adb.v1",
                 report)
             .ConfigureAwait(false);
         using var stop = new CancellationTokenSource();
@@ -212,13 +195,11 @@ internal static partial class AdbCommandRunner {
             ? "recovery"
             : "normal";
         console.WriteStatus($"Requesting {name} reboot");
-        await client.RequestAsync<AdbRebootParams, EmptyResult>(
-                JsonRpcMethods.AdbReboot,
+        await client.RebootAdbDeviceAsync(
                 new AdbRebootParams {
                     SerialNumber = options.AdbSerial,
                     Mode = mode
-                },
-                report)
+                })
             .ConfigureAwait(false);
         console.WriteStatus(
             $"{name} reboot requested",
@@ -232,13 +213,11 @@ internal static partial class AdbCommandRunner {
         ConsoleRenderer console,
         Action<TaskEventNotification> report) {
         console.WriteStatus("Requesting Loader mode");
-        await client.RequestAsync<AdbRebootParams, EmptyResult>(
-                JsonRpcMethods.AdbReboot,
+        await client.RebootAdbDeviceAsync(
                 new AdbRebootParams {
                     SerialNumber = options.AdbSerial,
                     Mode = ToolkitAdbRebootMode.Bootloader
-                },
-                report)
+                })
             .ConfigureAwait(false);
         console.WriteStatus("Waiting for Rockchip Loader");
         var target = new DeviceTarget {
@@ -253,10 +232,7 @@ internal static partial class AdbCommandRunner {
             ProductId = options.ProductId
         };
         for (var attempt = 0; attempt < 40; attempt++) {
-            var devices = await client.RequestAsync<
-                DeviceListParams,
-                DeviceListResult>(
-                    JsonRpcMethods.DeviceList,
+            var devices = await client.ListDevicesAsync(
                     new DeviceListParams { Target = target },
                     report)
                 .ConfigureAwait(false);

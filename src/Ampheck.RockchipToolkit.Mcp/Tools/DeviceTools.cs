@@ -21,17 +21,14 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         [Description("Optional USB product ID.")]
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            DeviceListParams,
-            DeviceListResult>(
-                JsonRpcMethods.DeviceList,
-                new DeviceListParams {
-                    Target = ToolSupport.CreateTarget(
+        return await client.ListDevicesAsync(
+            new DeviceListParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId)
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
     }
 
     [McpServerTool(
@@ -44,17 +41,14 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            DeviceInfoParams,
-            DeviceInfoResult>(
-                JsonRpcMethods.DeviceInfo,
-                new DeviceInfoParams {
-                    Target = ToolSupport.CreateTarget(
+        return await client.GetDeviceInfoAsync(
+            new DeviceInfoParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId)
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
     }
 
     [McpServerTool(
@@ -67,17 +61,14 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            DeviceChipInfoParams,
-            DeviceChipInfoResult>(
-                JsonRpcMethods.DeviceChipInfo,
-                new DeviceChipInfoParams {
-                    Target = ToolSupport.CreateTarget(
+        return await client.GetChipInfoAsync(
+            new DeviceChipInfoParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId)
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
     }
 
     [McpServerTool(
@@ -90,17 +81,14 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            DeviceChipIdParams,
-            DeviceChipIdResult>(
-                JsonRpcMethods.DeviceChipId,
-                new DeviceChipIdParams {
-                    Target = ToolSupport.CreateTarget(
+        return await client.GetChipIdAsync(
+            new DeviceChipIdParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId)
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
     }
 
     [McpServerTool(
@@ -113,17 +101,14 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        return await client.RequestAsync<
-            DeviceCapabilityParams,
-            DeviceCapabilityResult>(
-                JsonRpcMethods.DeviceCapability,
-                new DeviceCapabilityParams {
-                    Target = ToolSupport.CreateTarget(
+        return await client.GetCapabilitiesAsync(
+            new DeviceCapabilityParams {
+                Target = ToolSupport.CreateTarget(
                         transport,
                         vendorId,
                         productId)
-                },
-                cancellationToken: cancellationToken);
+            },
+            cancellationToken: cancellationToken);
     }
 
     [McpServerTool(Name = "load_loader")]
@@ -149,21 +134,18 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
                     cancellationToken);
             }
 
-            await client.RequestAsync<
-                DeviceLoaderParams,
-                EmptyResult>(
-                    JsonRpcMethods.DeviceLoader,
-                    new DeviceLoaderParams {
-                        Target = ToolSupport.CreateTarget(
+            await client.LoadLoaderAsync(
+                new DeviceLoaderParams {
+                    Target = ToolSupport.CreateTarget(
                             transport,
                             vendorId,
                             productId),
-                        BlobId = input?.BlobId,
-                        Url = url,
-                        ServerPath = input?.ServerPath
-                    },
-                    new ToolProgress(progress).Report,
-                    cancellationToken);
+                    BlobId = input?.BlobId,
+                    Url = url,
+                    ServerPath = input?.ServerPath
+                },
+                new ToolProgress(progress).Report,
+                cancellationToken);
             return new TextResult {
                 Text = "Loader downloaded."
             };
@@ -183,8 +165,7 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
         ushort? vendorId = null,
         ushort? productId = null,
         CancellationToken cancellationToken = default) {
-        await client.RequestAsync<DeviceResetParams, EmptyResult>(
-            JsonRpcMethods.DeviceReset,
+        await client.ResetDeviceAsync(
             new DeviceResetParams {
                 Target = ToolSupport.CreateTarget(
                     transport,
@@ -192,7 +173,7 @@ public sealed class DeviceTools(ToolkitRpcClient client) {
                     productId),
                 Mode = ParseResetMode(mode)
             },
-            cancellationToken: cancellationToken);
+            cancellationToken);
         return new TextResult { Text = $"Reset requested: {mode}." };
     }
 

@@ -50,8 +50,7 @@ internal static partial class AdbCommandRunner {
         }
 
         try {
-            await client.RequestAsync<AdbPushParams, EmptyResult>(
-                    JsonRpcMethods.AdbPush,
+            await client.PushAdbFileAsync(
                     new AdbPushParams {
                         SerialNumber = options.AdbSerial,
                         BlobId = blob?.BlobId,
@@ -85,10 +84,7 @@ internal static partial class AdbCommandRunner {
         var destination = RequireTransferPath(
             options.AdbDestination,
             "local destination");
-        var file = await client.RequestAsync<
-            AdbPullParams,
-            FileReference>(
-                JsonRpcMethods.AdbPull,
+        var file = await client.PullAdbFileAsync(
                 new AdbPullParams {
                     SerialNumber = options.AdbSerial,
                     Source = source,
