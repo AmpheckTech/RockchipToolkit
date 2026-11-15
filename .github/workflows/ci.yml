@@ -78,7 +78,6 @@ jobs:
           -c Release
           -r linux-x64
           --self-contained true
-          -p:PublishAot=true
           -o dist/arkt/linux-x64
 
       - name: Run native binary

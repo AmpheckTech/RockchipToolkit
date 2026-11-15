@@ -87,7 +87,6 @@ jobs:
           -r ${{ matrix.rid }}
           --self-contained true
           --no-restore
-          -p:PublishAot=true
           -p:Version="$VERSION"
           -o dist/arkt/${{ matrix.rid }}
 
