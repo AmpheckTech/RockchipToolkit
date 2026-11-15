@@ -1,77 +1,34 @@
 # Ampheck Rockchip Toolkit
 
-用于 Rockchip 设备的命令行工具。`arkt` 可以本机直接使用，也可以通过 Server 从另一台机器操作 USB 设备和串口。
+Rockchip 设备命令行工具，支持 RockUSB、串口、ADB 和固件镜像处理。
 
 ## 功能
 
-- 查看 RockUSB 设备、芯片信息、存储信息和能力
-- 烧录 `update.img`
-- 烧录固件目录或 ZIP，并按 `parameter.txt` 识别分区
-- 从本地路径、Windows UNC 路径或 HTTP(S) 地址加载固件
-- 按扇区读取、擦除和写入任意位置
-- 写入前可备份目标区域
-- 串口打开、关闭、交互终端和历史读取
-- 多客户端共享同一串口
-- 通过官方 adb server 提供 ADB 设备列表、Shell、Push、Pull 和重启到 Loader
-- 拆包和重新打包 RKFW/RKAF 固件
-- 局域网自动发现 Server
-- 支持 Windows、Linux（x64/ARM64）
+- RockUSB 设备信息、烧录、读写、擦除和备份
+- `update.img`、固件目录和 ZIP 烧录
+- 串口终端和历史缓冲
+- ADB Shell、Push、Pull 和重启
+- RKFW/RKAF 打包与拆包
 
-## 获取
+支持 Windows 和 Linux x64/ARM64。
 
-从 GitHub Releases 下载对应平台的文件，或者从源码构建。
+## 安装
 
-Linux 下载后需要添加执行权限：
+从 GitHub Releases 下载，Linux 下载后执行：
 
 ```bash
 chmod +x arkt
 ```
 
-## 本机直接使用
-
-普通命令会探测本机 `127.0.0.1:5070`。Server 未运行时会在后台自动启动，
-后续命令共用同一个 Server 和 USB/串口状态。首次执行需要 ADB 的命令
-（例如 `arkt adb devices`）时，Toolkit Server 会按需启动官方 adb server，
-ADB 默认使用 `5037` 端口。
-
-ADB 功能需要安装 Android SDK Platform Tools。Server 按以下顺序查找 `adb`：
-
-1. `ARKT_ADB` 指定的可执行文件
-2. 当前程序目录下的 `platform-tools/adb`
-3. `ANDROID_SDK_ROOT/platform-tools/adb`
-4. `ANDROID_HOME/platform-tools/adb`
-5. `PATH`
-
-也可以手动覆盖可执行文件位置：
+ADB 需要 Android SDK Platform Tools，也可以指定路径：
 
 ```bash
 export ARKT_ADB=/opt/android-sdk/platform-tools/adb
 ```
 
-```bash
-arkt server status
-arkt server start
-arkt server stop
-```
+## 本机使用
 
-Server 以当前用户运行。Linux 下需要给该用户配置 USB/串口 udev 权限或加入
-相应设备组；也可以直接用 `sudo` 启动命令，让自动启动的 Server 获得权限。
-
-## 远程使用
-
-在连接开发板的机器上启动 Server：
-
-```bash
-./arkt server nodaemon \
-  --listen 0.0.0.0:5070 \
-  --hostname arkt-server
-```
-
-在另一台机器上设置 Server 地址：
-
-```bash
-export ARKT_SERVER=10.0.0.2:5070
-```
+普通命令会自动启动本机 Server：
 
 ```bash
 arkt devices
@@ -79,81 +36,35 @@ arkt serial list
 arkt adb devices
 ```
 
-Server 设置了 token 时：
+Server 管理：
 
 ```bash
-export ARKT_SERVER_TOKEN=your-token
+arkt server start
+arkt server status
+arkt server stop
 ```
 
-自动化和 Web UI 使用同一套 Server API：
+Linux 下需要配置 USB/串口权限，或者使用 `sudo` 启动 Server。
 
-```text
-WS   /api/rpc                    JSON-RPC 2.0
-PUT  /api/blobs/{id}             上传 blob
-GET  /api/blobs/{id}             下载 blob
-WS   /api/serial/{sessionId}     串口二进制流
-WS   /api/adb/{sessionId}        ADB Shell 二进制流
-```
+## 远程使用
 
-token 通过 `Authorization: Bearer <token>` 传递。浏览器 WebSocket
-不能设置自定义请求头时，可以在 URL 后附加 `?token=<token>`。
-
-长操作使用 `tasks.list`、`tasks.get`、`tasks.cancel` 和
-`tasks.subscribe` 管理。进度、日志和状态通过 `task.event`
-notification 发送；`server.info` 返回当前可用的 RPC 方法列表。
-
-客户端名称会显示在 Server 日志中，默认使用机器名。可以覆盖：
+连接设备的机器：
 
 ```bash
-export ARKT_CLIENT_NAME=build-pc-01
+arkt server nodaemon --listen 0.0.0.0:5070 --token your-token
 ```
 
-### Server 参数
-
-```text
---listen host:port       监听地址，默认 127.0.0.1:5070
---hostname NAME          局域网发现和日志中显示的 Server 名称
---token TOKEN            可选的客户端访问 token
---idle-timeout SECONDS   无客户端连接后自动退出，0 表示不退出
---max-blob-mib N         单个上传 blob 上限
---serial-history-kib N   每个串口的历史缓冲大小
-```
-
-Server 监听非回环地址时会以 `adb -a` 启动官方 adb server，使远程客户端可以
-连接。未安装 adb 或端口被占用时，RockUSB、串口等功能不受影响。
-
-当前通信未启用加密。官方 ADB server 也没有认证机制，因此不要把 `0.0.0.0:5070`
-或 `0.0.0.0:5037` 直接暴露到公网。
-
-## 发现 Server
-
-```bash
-arkt discover
-```
-
-输出的 endpoint 可以直接用于客户端：
+客户端：
 
 ```bash
 export ARKT_SERVER=10.0.0.2:5070
+export ARKT_SERVER_TOKEN=your-token
+arkt devices
 ```
 
-## 命令补全
-
-Bash 中临时启用：
-
-```bash
-source <(arkt completion bash)
-```
-
-写入 `~/.bashrc` 可长期生效。`completion` 还支持 `zsh`、`fish` 和
-`powershell`。
+完整参数见 `arkt server nodaemon --help`。通信未加密，不要直接暴露到公网。
 
 ## RockUSB
-
-在 Windows 使用 RockUSB 前需要安装对应的 Rockchip USB 驱动。Linux 需要允许
-当前用户访问设备的 USB 节点。
-
-### 查看设备
 
 ```bash
 arkt devices
@@ -163,288 +74,78 @@ arkt chip info
 arkt chip id
 ```
 
-多台设备同时连接时，可以使用 `--vid` 和 `--pid` 指定设备。
-
-### 烧录 update.img
+多台设备可用 `--vid`、`--pid` 选择。
 
 ```bash
 arkt flash update.img
-```
-
-烧录完成后默认重启设备。保留在 Loader 模式：
-
-```bash
-arkt flash update.img --no-reset
-```
-
-MaskROM 模式可以自动使用 `update.img` 内置的 Loader，也可以手动指定：
-
-```bash
+arkt flash ./firmware
+arkt flash http://example.com/update.img
 arkt flash update.img --loader loader.bin
 ```
 
-### 烧录固件目录
-
-固件目录中的镜像由 `parameter.txt` 决定。常见内容如下：
-
-```text
-parameter.txt
-boot.img
-rootfs.img
-...
-```
-
-工具只烧录目录中存在的分区镜像：
-
-```bash
-arkt flash ./firmware
-```
-
-只烧录 boot 时，准备一个只包含 `parameter.txt` 和 `boot.img` 的目录：
-
-```bash
-mkdir boot-only
-cp parameter.txt boot.img boot-only/
-arkt flash boot-only
-```
-
-### 通过 HTTP(S) 烧录
-
-连接 Server 时，URL 默认由 Server 下载：
-
-```bash
-arkt flash http://127.0.0.1/update.img
-```
-
-如果 URL 只能由客户端访问：
-
-```bash
-arkt flash http://127.0.0.1/update.img --fetch client
-```
-
-### 原始扇区写入
-
-`--sector` 是目标起始扇区，每个扇区 512 字节。例如从 `0x800000` 开始写：
-
-```bash
-arkt write boot.img --sector 0x4000
-```
-
-写入文件的一部分：
-
-```bash
-arkt write image.bin \
-  --sector 0x8000 \
-  --source-offset 0x100000 \
-  --length 0x400000
-```
-
-写入前备份目标范围：
-
-```bash
-arkt write boot.img \
-  --sector 0x8000 \
-  --backup boot-backup.img
-```
-
-`write` 不读取 `parameter.txt`。它只按给定扇区直接写，地址或长度错误可能覆盖其他分区。
-
-### 读取和擦除
-
-读取一个扇区：
-
-```bash
-arkt read dump.bin --sector 0 --count 1
-```
-
-读取 1 MiB：
+`--fetch client` 可让客户端下载 HTTP(S) 固件。
 
 ```bash
 arkt read dump.bin --sector 0 --count 2048
-```
-
-擦除一段扇区：
-
-```bash
+arkt write boot.img --sector 0x8000
+arkt write boot.img --sector 0x8000 --backup boot-backup.img
 arkt erase --sector 0x8000 --count 2048
-```
-
-### 存储和重启
-
-```bash
 arkt storage emmc
-arkt storage sd-card
-arkt storage spi-nor
-
 arkt reset normal
-arkt reset power-off
-arkt reset reset-mask-rom
-arkt reset disconnect
 ```
 
-## 固件镜像打包与拆包
+`write` 直接按扇区写入，不会检查分区边界。
 
-RKFW 和独立 RKAF 镜像可以直接在本机拆包、重新打包，不会启动 Server：
+## 固件镜像
 
 ```bash
 arkt image unpack update.img ./firmware
-arkt image pack ./firmware update-new.img              # RKAF
-arkt image pack ./firmware update-new.img --chip RK3399 # RKFW
+arkt image pack ./firmware update-new.img
+arkt image pack ./firmware update-new.img --chip RK3399
 ```
 
-拆包会生成 `package-file`，没有 `parameter` 时还会生成
-`rkaf-metadata.tsv`，打包时需要保留。RKFW 还会拆出 `BOOT`；目录中有 `BOOT`
-时用 `--chip` 打包为 RKFW，否则打包为 RKAF。拆包会校验 RKAF CRC，RKFW 还会
-校验整个文件的 MD5。
-
-默认不覆盖已有输出，需要替换时加 `--force`：
-
-```bash
-arkt image pack ./firmware update-new.img --chip RK3399 --force
-```
-
-当前不支持 SSFW。
+默认不覆盖输出，使用 `--force` 覆盖。
 
 ## 串口
 
-查看串口：
-
 ```bash
 arkt serial list
-```
-
-打开并保留串口：
-
-```bash
 arkt serial open /dev/ttyUSB0
-```
-
-默认波特率是 `1500000`。需要其他速率时使用 `--baudrate`。
-
-其他串口参数：
-
-```text
---data-bits 5..8
---parity none|odd|even|mark|space
---stop-bits one|one-point-five|two
---handshake none|xon-xoff|rts-cts|rts-cts-xon-xoff
---no-dtr
---no-rts
-```
-
-进入交互终端：
-
-```bash
 arkt serial terminal /dev/ttyUSB0
-```
-
-按 `Ctrl+]` 退出终端。串口保持打开，USB 转串口掉线后会自动重连。
-
-读取历史：
-
-```bash
 arkt serial history /dev/ttyUSB0
-arkt serial history /dev/ttyUSB0 --bytes 4096
-```
-
-清空已保留的输出：
-
-```bash
 arkt serial clear /dev/ttyUSB0
-```
-
-关闭串口：
-
-```bash
 arkt serial close /dev/ttyUSB0
 ```
 
-## ADB
+终端按 `Ctrl+]` 退出。其他参数见 `arkt serial open --help`。
 
-查看设备：
+## ADB
 
 ```bash
 arkt adb devices
-```
-
-执行命令：
-
-```bash
 arkt adb shell uname -a
-```
-
-管道、循环等多段命令使用 `-c`：
-
-```bash
-arkt adb shell -c 'for f in /proc/[0-9]*; do echo "$f"; done'
-```
-
-需要保留 argv 边界时使用 `--`：
-
-```bash
-arkt adb shell -- sh -c 'echo first; echo second; echo third'
-```
-
-进入交互 Shell：
-
-```bash
 arkt adb shell
-```
-
-文件传输：
-
-```bash
 arkt adb push ./local.bin /tmp/local.bin
 arkt adb pull /tmp/local.bin ./local.bin
-```
-
-重启设备：
-
-```bash
 arkt adb reboot loader
-arkt adb reboot normal
-arkt adb reboot recovery
 ```
 
-使用 `--serial` 选择目标设备。只有 `arkt adb reboot loader` 的 `--vid` /
-`--pid` 用于进入 Loader 后筛选 RockUSB 设备；普通 ADB 设备筛选不支持 VID/PID。
+多台设备使用 `--serial` 选择。
 
-ADB 端口默认是 `5037`。使用 `ARKT_SERVER` 时，客户端从 Server 地址推导主机并
-直接连接该主机上的 adb server，因此 Toolkit Server 和客户端需要配置相同的 ADB
-端口：
+## 其他
 
 ```bash
-export ARKT_ADB_PORT=5038
+arkt discover
+arkt completion bash
 ```
 
-## 固件输入形式
-
-`flash` 支持：
-
-- 本地或 HTTP(S) 的 `update.img`
-- 本地或 HTTP(S) 的固件目录
-- 本地或 HTTP(S) 的 `firmware.zip`
-
-远程模式下，本地固件会上传到 Server。
+补全支持 `bash`、`zsh`、`fish` 和 `powershell`。
 
 ## 构建
 
-需要 .NET 10 SDK。
+需要 .NET 10 SDK：
 
 ```bash
 dotnet restore Ampheck.RockchipToolkit.slnx
 dotnet build Ampheck.RockchipToolkit.slnx -c Release
 ```
-
-生成 Linux x64 可执行文件：
-
-```bash
-dotnet publish \
-  src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj \
-  -c Release \
-  -r linux-x64 \
-  -p:PublishAot=true \
-  -o release/arkt
-```
-
-Windows 将 RID 换成 `win-x64`。
