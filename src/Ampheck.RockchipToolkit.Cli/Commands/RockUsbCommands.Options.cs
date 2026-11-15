@@ -1,11 +1,10 @@
 using System.CommandLine;
-using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static partial class RockUsbCommands {
-    private static Option<string?> SectorOption(bool required) {
+internal sealed partial class RockUsbCommands {
+    private Option<string?> SectorOption(bool required) {
         return new Option<string?>(
             "--sector",
             "-s") {
@@ -14,7 +13,7 @@ internal static partial class RockUsbCommands {
         };
     }
 
-    private static Option<string?> CountOption(bool required) {
+    private Option<string?> CountOption(bool required) {
         return new Option<string?>(
             "--count",
             "-n") {
@@ -23,13 +22,13 @@ internal static partial class RockUsbCommands {
         };
     }
 
-    private static Option<bool> NoResetOption() {
+    private Option<bool> NoResetOption() {
         return new Option<bool>("--no-reset") {
             Description = "Do not reset after flashing."
         };
     }
 
-    private static ToolkitResetMode ParseReset(string value) {
+    private ToolkitResetMode ParseReset(string value) {
         return value.ToLowerInvariant() switch {
             "normal" => ToolkitResetMode.Normal,
             "reset-mass-storage" => ToolkitResetMode.ResetMassStorage,
@@ -41,7 +40,7 @@ internal static partial class RockUsbCommands {
         };
     }
 
-    private static ToolkitStorage ParseStorage(string value) {
+    private ToolkitStorage ParseStorage(string value) {
         return value.ToLowerInvariant() switch {
             "emmc" => ToolkitStorage.Emmc,
             "sd-card" => ToolkitStorage.SdCard,
@@ -49,17 +48,5 @@ internal static partial class RockUsbCommands {
             _ => throw new ArgumentException(
                 $"Invalid storage '{value}'.")
         };
-    }
-
-    private static Task<int> ExecuteRpc(
-        string command,
-        CommandOptions options,
-        CliCommandContext context) {
-        return ToolkitClientCommandRunner.RunAsync(
-            command,
-            options,
-            context.Endpoint!,
-            context.Logger,
-            context.Console);
     }
 }

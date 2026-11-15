@@ -4,13 +4,11 @@ using Ampheck.RockchipToolkit.Cli.Infrastructure;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static class CommandLine {
-    public static CliInvocation? Parse(
-        string[] args,
-        TextWriter output) {
+internal sealed class CommandLine(TextWriter output) {
+    public CliInvocation? Parse(string[] args) {
         return WithEnglishCli(() => {
             var state = new CommandParseState();
-            var root = CreateRoot(state, output);
+            var root = CreateRoot(state);
             state.Arguments = args;
             var parsed = root.Parse(args);
             if (parsed.Errors.Count > 0) {
@@ -29,7 +27,7 @@ internal static class CommandLine {
                     message);
             }
 
-            parsed.Invoke(CreateInvocation(output));
+            parsed.Invoke(CreateInvocation());
             if (state.HelpDisplayed) {
                 return null;
             }
@@ -43,27 +41,23 @@ internal static class CommandLine {
         });
     }
 
-    public static void PrintHelp(
-        string[] args,
-        TextWriter output) {
+    public void PrintHelp(string[] args) {
         WithEnglishCli(() => {
             var state = new CommandParseState();
-            var root = CreateRoot(state, output);
-            root.Parse(args).Invoke(CreateInvocation(output));
+            var root = CreateRoot(state);
+            root.Parse(args).Invoke(CreateInvocation());
             return 0;
         });
     }
 
-    public static void PrintVersion(TextWriter output) {
+    public void PrintVersion() {
         output.WriteLine(ProductVersion.Format(
             "arkt",
             typeof(CommandLine).Assembly));
         output.Flush();
     }
 
-    public static bool TryPrintCompletion(
-        string[] args,
-        TextWriter output) {
+    public bool TryPrintCompletion(string[] args) {
         if (args.Length == 0 ||
             !args[0].StartsWith(
                 "[suggest:",
@@ -73,34 +67,31 @@ internal static class CommandLine {
 
         WithEnglishCli(() => {
             var state = new CommandParseState();
-            var root = CreateRoot(state, output);
-            root.Parse(args).Invoke(CreateInvocation(output));
+            var root = CreateRoot(state);
+            root.Parse(args).Invoke(CreateInvocation());
             return 0;
         });
         return true;
     }
 
-    private static RootCommand CreateRoot(
-        CommandParseState state,
-        TextWriter output) {
+    private RootCommand CreateRoot(CommandParseState state) {
         var root = new RootCommand(
             "Flash and inspect Rockchip devices over RockUSB and ADB.");
-        ServerCommands.AddTo(root, state);
-        RockUsbCommands.AddTo(root, state);
-        root.Add(AdbCommands.Create(state));
-        root.Add(SerialCommands.Create(state));
-        root.Add(ImageCommands.Create(state));
-        root.Add(CompletionCommands.Create(state));
-        ConfigureBareCommandHelp(root, state, output);
+        new ServerCommands(state).Register(root);
+        new RockUsbCommands(state).Register(root);
+        new AdbCommands(state).Register(root);
+        new SerialCommands(state).Register(root);
+        new ImageCommands(state).Register(root);
+        new CompletionCommands(state).Register(root);
+        ConfigureBareCommandHelp(root, state);
         return root;
     }
 
-    private static void ConfigureBareCommandHelp(
+    private void ConfigureBareCommandHelp(
         Command command,
-        CommandParseState state,
-        TextWriter output) {
+        CommandParseState state) {
         foreach (var subcommand in command.Subcommands) {
-            ConfigureBareCommandHelp(subcommand, state, output);
+            ConfigureBareCommandHelp(subcommand, state);
         }
 
         if (command.Subcommands.Count == 0 ||
@@ -112,7 +103,7 @@ internal static class CommandLine {
         // groups need this help action. Explicit defaults such as "adb reboot"
         // are preserved by the guard above.
         command.SetAction(_ => {
-            command.Parse(["--help"]).Invoke(CreateInvocation(output));
+            command.Parse(["--help"]).Invoke(CreateInvocation());
             state.HelpDisplayed = true;
             return 0;
         });
@@ -129,8 +120,7 @@ internal static class CommandLine {
         }
     }
 
-    private static InvocationConfiguration CreateInvocation(
-        TextWriter output) =>
+    private InvocationConfiguration CreateInvocation() =>
         new() {
             Output = output,
             EnableDefaultExceptionHandler = false

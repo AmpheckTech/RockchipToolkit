@@ -1,98 +1,93 @@
 using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Cli.Presentation;
+using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
 
-internal static partial class AdbCommandRunner {
-    private static async Task<int> PushAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        ILogger logger,
-        Action<TaskEventNotification> report) {
-        var source = RequireTransferPath(
-            options.AdbSource,
-            "local source");
-        var destination = RequireTransferPath(
-            options.AdbDestination,
-            "remote destination");
-        if (!File.Exists(source)) {
+internal sealed partial class AdbCommandRunner {
+    public async Task<int> PushAsync(
+        AdbTransferArguments options,
+        CancellationToken cancellationToken = default) {
+        if (!File.Exists(options.Source)) {
             throw new FileNotFoundException(
-                $"Local file '{source}' was not found.",
-                source);
+                $"Local file '{options.Source}' was not found.",
+                options.Source);
         }
 
-        if (Directory.Exists(source)) {
+        if (Directory.Exists(options.Source)) {
             throw new NotSupportedException(
                 "Directory push is not supported.");
         }
 
-        var length = new FileInfo(source).Length;
-        using var progress = console.IsInteractive &&
+        await using var session = await CreateSessionAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+        var length = new FileInfo(options.Source).Length;
+        using var progress = context.Console.IsInteractive &&
             length > 0
                 ? new ProgressBar(
-                    console,
-                    Path.GetFileName(source),
+                    context.Console,
+                    Path.GetFileName(options.Source),
                     length)
                 : null;
         BlobReference? blob = null;
-        if (!client.UseServerPaths) {
-            logger.LogInformation(
+        if (!session.Client.UseServerPaths) {
+            context.Logger.LogInformation(
                 "Uploading {LocalPath} for ADB push",
-                source);
-            blob = await client.UploadBlobAsync(
-                    source,
-                    progress)
+                options.Source);
+            blob = await session.Client.UploadBlobAsync(
+                    options.Source,
+                    progress,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
         try {
-            await client.PushAdbFileAsync(
+            await session.Client.PushAdbFileAsync(
                     new AdbPushParams {
-                        SerialNumber = options.AdbSerial,
+                        SerialNumber = options.SerialNumber,
                         BlobId = blob?.BlobId,
-                        ServerPath = client.UseServerPaths
-                            ? Path.GetFullPath(source)
+                        ServerPath = session.Client.UseServerPaths
+                            ? Path.GetFullPath(options.Source)
                             : null,
-                        Destination = destination
+                        Destination = options.Destination
                     },
-                    report)
+                    session.Report,
+                    cancellationToken)
                 .ConfigureAwait(false);
         } finally {
             if (blob is not null) {
-                await client.DeleteBlobAsync(blob.BlobId)
+                await session.Client.DeleteBlobAsync(blob.BlobId)
                     .ConfigureAwait(false);
             }
         }
 
-        Console.WriteLine($"pushed {source} -> {destination}");
+        Console.WriteLine(
+            $"pushed {options.Source} -> {options.Destination}");
         return 0;
     }
 
-    private static async Task<int> PullAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        ILogger logger,
-        Action<TaskEventNotification> report) {
-        var source = RequireTransferPath(
-            options.AdbSource,
-            "remote source");
-        var destination = RequireTransferPath(
-            options.AdbDestination,
-            "local destination");
-        var file = await client.PullAdbFileAsync(
+    public async Task<int> PullAsync(
+        AdbTransferArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = await CreateSessionAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+        var destination = options.Destination;
+        var file = await session.Client.PullAdbFileAsync(
                 new AdbPullParams {
-                    SerialNumber = options.AdbSerial,
-                    Source = source,
-                    DestinationServerPath = client.UseServerPaths
-                        ? Path.GetFullPath(destination)
-                        : null
+                    SerialNumber = options.SerialNumber,
+                    Source = options.Source,
+                    DestinationServerPath =
+                        session.Client.UseServerPaths
+                            ? Path.GetFullPath(destination)
+                            : null
                 },
-                report)
+                session.Report,
+                cancellationToken)
             .ConfigureAwait(false);
         try {
             if (file.BlobId is not null &&
@@ -105,15 +100,16 @@ internal static partial class AdbCommandRunner {
             }
 
             if (file.BlobId is not null) {
-                logger.LogInformation(
+                context.Logger.LogInformation(
                     "Downloading ADB pull result to {LocalPath}",
                     destination);
                 await BlobOutput.WriteAsync(
-                        client,
+                        session.Client,
                         file,
                         destination,
-                        console,
-                        logger)
+                        context.Console,
+                        context.Logger,
+                        cancellationToken)
                     .ConfigureAwait(false);
             } else {
                 destination = file.Path ??
@@ -122,12 +118,13 @@ internal static partial class AdbCommandRunner {
             }
         } finally {
             if (file.BlobId is { } blobId) {
-                await client.DeleteBlobAsync(blobId)
+                await session.Client.DeleteBlobAsync(blobId)
                     .ConfigureAwait(false);
             }
         }
 
-        Console.WriteLine($"pulled {source} -> {destination}");
+        Console.WriteLine(
+            $"pulled {options.Source} -> {destination}");
         return 0;
     }
 }

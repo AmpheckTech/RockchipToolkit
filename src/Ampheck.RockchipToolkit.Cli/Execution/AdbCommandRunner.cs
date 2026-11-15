@@ -3,104 +3,23 @@ using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Cli.Execution.Serial;
 using Ampheck.RockchipToolkit.Cli.Infrastructure;
-using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
-using Microsoft.Extensions.Logging;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution;
 
-internal static partial class AdbCommandRunner {
-    public static async Task<int> ExecuteAsync(
-        string command,
-        CommandOptions options,
-        ToolkitEndpoint endpoint,
-        ILogger logger,
-        ConsoleRenderer console) {
-        var token = Environment.GetEnvironmentVariable(
-            "ARKT_SERVER_TOKEN");
-        var clientName = Environment.GetEnvironmentVariable(
-            "ARKT_CLIENT_NAME");
-        await using var client = new ToolkitRpcClient(
-            endpoint,
-            token,
-            clientName,
-            ToolkitFileAccess.Parse(
-                Environment.GetEnvironmentVariable(
-                    "ARKT_FILE_MODE")));
-        using var printer = new ToolkitEventPrinter(console);
-        void ReportEvent(TaskEventNotification value) {
-            printer.Write(value);
-        }
-
-        await client.EnsureAdbServerAsync()
+internal sealed partial class AdbCommandRunner(CliCommandContext context) {
+    public async Task<int> ListDevicesAsync(
+        AdbDeviceArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = await CreateSessionAsync(
+                cancellationToken)
             .ConfigureAwait(false);
-        return command switch {
-            CommandNames.AdbDevices =>
-                await ListDevicesAsync(
-                        client,
-                        options,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbShell =>
-                await RunShellAsync(
-                        client,
-                        options,
-                        console,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbPush =>
-                await PushAsync(
-                        client,
-                        options,
-                        console,
-                        logger,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbPull =>
-                await PullAsync(
-                        client,
-                        options,
-                        console,
-                        logger,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbRebootSystem =>
-                await RebootAsync(
-                        client,
-                        options,
-                        ToolkitAdbRebootMode.System,
-                        console,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbRebootRecovery =>
-                await RebootAsync(
-                        client,
-                        options,
-                        ToolkitAdbRebootMode.Recovery,
-                        console,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            CommandNames.AdbRebootLoader =>
-                await RebootToLoaderAsync(
-                        client,
-                        options,
-                        console,
-                        ReportEvent)
-                    .ConfigureAwait(false),
-            _ => throw new ArgumentException(
-                $"Unknown ADB command '{command}'.")
-        };
-    }
-
-    private static async Task<int> ListDevicesAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        Action<TaskEventNotification> report) {
-        var result = await client.ListAdbDevicesAsync(
+        var result = await session.Client.ListAdbDevicesAsync(
                 new AdbDevicesParams {
-                    SerialNumber = options.AdbSerial
-                })
+                    SerialNumber = options.SerialNumber
+                },
+                cancellationToken)
             .ConfigureAwait(false);
         foreach (var device in result.Devices) {
             Console.WriteLine(
@@ -112,30 +31,31 @@ internal static partial class AdbCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RunShellAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        Action<TaskEventNotification> report) {
-        if (options.AdbShellCommand is null &&
-            options.AdbShellArguments.Length == 0) {
+    public async Task<int> ShellAsync(
+        AdbShellArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = await CreateSessionAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (options.Command is null &&
+            options.Arguments.Length == 0) {
             return await RunInteractiveShellAsync(
-                    client,
-                    options,
-                    console,
-                    report)
+                    session,
+                    options.SerialNumber,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        var command = options.AdbShellCommand ??
+        var command = options.Command ??
             AdbShellCommandBuilder.FromArguments(
-                options.AdbShellArguments);
-        var result = await client.ExecuteAdbShellAsync(
+                options.Arguments);
+        var result = await session.Client.ExecuteAdbShellAsync(
                 new AdbShellParams {
-                    SerialNumber = options.AdbSerial,
+                    SerialNumber = options.SerialNumber,
                     Command = command
                 },
-                report)
+                session.Report,
+                cancellationToken)
             .ConfigureAwait(false);
         Console.Out.Write(result.Text);
         if (result.Text.Length > 0 &&
@@ -147,31 +67,76 @@ internal static partial class AdbCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RunInteractiveShellAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        Action<TaskEventNotification> report) {
-        using var socket = await client.OpenAdbShellAsync(
-                new AdbShellSessionParams {
-                    SerialNumber = options.AdbSerial
+    public async Task<int> RebootAsync(
+        AdbRebootArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = await CreateSessionAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (options.Mode == ToolkitAdbRebootMode.Bootloader) {
+            return await RebootToLoaderAsync(
+                    session,
+                    options,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var name = options.Mode == ToolkitAdbRebootMode.Recovery
+            ? "recovery"
+            : "normal";
+        context.Console.WriteStatus($"Requesting {name} reboot");
+        await session.Client.RebootAdbDeviceAsync(
+                new AdbRebootParams {
+                    SerialNumber = options.SerialNumber,
+                    Mode = options.Mode
                 },
-                report)
+                cancellationToken)
+            .ConfigureAwait(false);
+        context.Console.WriteStatus(
+            $"{name} reboot requested",
+            complete: true);
+        return 0;
+    }
+
+    private async ValueTask<CliRpcSession>
+        CreateSessionAsync(CancellationToken cancellationToken) {
+        var session = context.OpenRpcSession();
+        try {
+            await session.Client.EnsureAdbServerAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return session;
+        } catch {
+            await session.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task<int> RunInteractiveShellAsync(
+        CliRpcSession session,
+        string? serialNumber,
+        CancellationToken cancellationToken) {
+        using var socket = await session.Client.OpenAdbShellAsync(
+                new AdbShellSessionParams {
+                    SerialNumber = serialNumber
+                },
+                session.Report,
+                cancellationToken)
             .ConfigureAwait(false);
         using var stop = new CancellationTokenSource();
         var output = PumpBinaryOutputAsync(socket, stop.Token);
         try {
             await SerialTerminalRunner.RunAsync(
-                    async (data, cancellationToken) => {
+                    async (data, token) => {
                         await socket.SendAsync(
                                 data,
                                 WebSocketMessageType.Binary,
                                 endOfMessage: true,
-                                cancellationToken)
+                                token)
                             .ConfigureAwait(false);
                     },
                     output,
-                    console,
+                    context.Console,
                     stop.Token,
                     "Interactive ADB shell. Use Ctrl+] to leave.")
                 .ConfigureAwait(false);
@@ -185,67 +150,52 @@ internal static partial class AdbCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RebootAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ToolkitAdbRebootMode mode,
-        ConsoleRenderer console,
-        Action<TaskEventNotification> report) {
-        var name = mode == ToolkitAdbRebootMode.Recovery
-            ? "recovery"
-            : "normal";
-        console.WriteStatus($"Requesting {name} reboot");
-        await client.RebootAdbDeviceAsync(
+    private async Task<int> RebootToLoaderAsync(
+        CliRpcSession session,
+        AdbRebootArguments options,
+        CancellationToken cancellationToken) {
+        context.Console.WriteStatus("Requesting Loader mode");
+        await session.Client.RebootAdbDeviceAsync(
                 new AdbRebootParams {
-                    SerialNumber = options.AdbSerial,
-                    Mode = mode
-                })
-            .ConfigureAwait(false);
-        console.WriteStatus(
-            $"{name} reboot requested",
-            complete: true);
-        return 0;
-    }
-
-    private static async Task<int> RebootToLoaderAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        Action<TaskEventNotification> report) {
-        console.WriteStatus("Requesting Loader mode");
-        await client.RebootAdbDeviceAsync(
-                new AdbRebootParams {
-                    SerialNumber = options.AdbSerial,
+                    SerialNumber = options.SerialNumber,
                     Mode = ToolkitAdbRebootMode.Bootloader
-                })
+                },
+                cancellationToken)
             .ConfigureAwait(false);
-        console.WriteStatus("Waiting for Rockchip Loader");
+        context.Console.WriteStatus("Waiting for Rockchip Loader");
         var target = new DeviceTarget {
-            Transport = options.Transport switch {
+            Transport = options.LoaderTarget.Transport switch {
                 TransportKind.RockUsb =>
                     ToolkitTransport.RockUsb,
                 TransportKind.LibUsb =>
                     ToolkitTransport.LibUsb,
                 _ => ToolkitTransport.Auto
             },
-            VendorId = options.VendorId,
-            ProductId = options.ProductId
+            VendorId = options.LoaderTarget.VendorId,
+            ProductId = options.LoaderTarget.ProductId
         };
         for (var attempt = 0; attempt < 40; attempt++) {
-            var devices = await client.ListDevicesAsync(
+            var devices = await session.Client.ListDevicesAsync(
                     new DeviceListParams { Target = target },
-                    report)
+                    session.Report,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (devices.Devices.Any(device =>
                 device.Mode is "Loader" or "MaskRom")) {
-                console.WriteStatus(
+                context.Console.WriteStatus(
                     "Device entered Loader mode",
                     complete: true);
-                await Task.Delay(500).ConfigureAwait(false);
+                await Task.Delay(
+                        500,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 return 0;
             }
 
-            await Task.Delay(500).ConfigureAwait(false);
+            await Task.Delay(
+                    500,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         throw new TimeoutException(
@@ -289,14 +239,6 @@ internal static partial class AdbCommandRunner {
         string.IsNullOrWhiteSpace(value)
             ? null
             : $"{name}:{value}";
-
-    private static string RequireTransferPath(
-        string? value,
-        string description) =>
-        string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException(
-                $"An ADB {description} is required.")
-            : value;
 
     private static void TryCloseSocket(ClientWebSocket socket) {
         try {

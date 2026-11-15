@@ -1,3 +1,4 @@
+using Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc;
 using Microsoft.Extensions.Logging;
@@ -16,4 +17,14 @@ internal sealed record CliCommandContext(
     ILogger Logger,
     ConsoleRenderer Console,
     ToolkitEndpoint? Endpoint,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken) {
+    public CliRpcSession OpenRpcSession() {
+        var endpoint = Endpoint ??
+            throw new InvalidOperationException(
+                "The command requires a toolkit server endpoint.");
+        return new CliRpcSession(
+            endpoint,
+            Logger,
+            Console);
+    }
+}

@@ -1,16 +1,16 @@
 using System.Net.WebSockets;
 using Ampheck.RockchipToolkit.Cli.Commands;
 using Ampheck.RockchipToolkit.Cli.Execution.Serial;
-using Ampheck.RockchipToolkit.Cli.Presentation;
 using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Execution.Rpc;
 
-internal static partial class ToolkitClientCommandRunner {
-    private static async Task<int> RunSerialListAsync(
-        ToolkitRpcClient client,
-        Action<TaskEventNotification> report) {
-        var result = await client.ListSerialPortsAsync()
+internal sealed class SerialCommandRunner(CliCommandContext context) {
+    public async Task<int> RunListAsync(
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        var result = await session.Client.ListSerialPortsAsync(
+                cancellationToken)
             .ConfigureAwait(false);
         foreach (var port in result.Ports) {
             Console.WriteLine(port);
@@ -19,85 +19,80 @@ internal static partial class ToolkitClientCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RunSerialOpenAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        Action<TaskEventNotification> report) {
-        await client.OpenSerialPortAsync(
+    public async Task<int> RunOpenAsync(
+        SerialOpenArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        await session.Client.OpenSerialPortAsync(
                 new SerialOpenParams {
-                    PortName = RequireSerialPort(options),
-                    Settings = new SerialPortSettings {
-                        BaudRate =
-                            options.SerialBaudRate ?? 150_000,
-                        DataBits = options.SerialDataBits ?? 8,
-                        Parity = options.SerialParity,
-                        StopBits = options.SerialStopBits,
-                        Handshake = options.SerialHandshake,
-                        DtrEnable = options.SerialDtrEnable,
-                        RtsEnable = options.SerialRtsEnable
-                    }
-                })
+                    PortName = options.PortName,
+                    Settings = options.Settings
+                },
+                cancellationToken)
             .ConfigureAwait(false);
         Console.WriteLine(
-            $"Serial port {options.SerialPort} opened");
+            $"Serial port {options.PortName} opened");
         return 0;
     }
 
-    private static async Task<int> RunSerialCloseAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        Action<TaskEventNotification> report) {
-        var result = await client.CloseSerialPortAsync(
+    public async Task<int> RunCloseAsync(
+        SerialPortArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        var result = await session.Client.CloseSerialPortAsync(
                 new SerialCloseParams {
-                    PortName = RequireSerialPort(options)
-                })
+                    PortName = options.PortName
+                },
+                cancellationToken)
             .ConfigureAwait(false);
         Console.WriteLine(
             result.Closed
-                ? $"Serial port {options.SerialPort} closed"
-                : $"Serial port {options.SerialPort} was not open");
+                ? $"Serial port {options.PortName} closed"
+                : $"Serial port {options.PortName} was not open");
         return 0;
     }
 
-    private static async Task<int> RunSerialClearAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        Action<TaskEventNotification> report) {
-        await client.ClearSerialBufferAsync(
+    public async Task<int> RunClearAsync(
+        SerialPortArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        await session.Client.ClearSerialBufferAsync(
                 new SerialPortParams {
-                    PortName = RequireSerialPort(options)
-                })
+                    PortName = options.PortName
+                },
+                cancellationToken)
             .ConfigureAwait(false);
         Console.WriteLine(
-            $"Serial buffer cleared for {options.SerialPort}");
+            $"Serial buffer cleared for {options.PortName}");
         return 0;
     }
 
-    private static async Task<int> RunSerialHistoryAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        Action<TaskEventNotification> report) {
-        var file = await client.ReadSerialHistoryAsync(
+    public async Task<int> RunHistoryAsync(
+        SerialHistoryArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        var file = await session.Client.ReadSerialHistoryAsync(
                 new SerialHistoryParams {
-                    PortName = RequireSerialPort(options),
-                    MaximumBytes = options.SerialHistoryBytes ??
-                        256 * 1024,
-                    OutputServerPath = client.UseServerPaths
+                    PortName = options.PortName,
+                    MaximumBytes = options.MaximumBytes,
+                    OutputServerPath = session.Client.UseServerPaths
                         ? Path.Combine(
                             Path.GetTempPath(),
                             $"arkt-serial-history-{Guid.NewGuid():N}.bin")
                         : null
                 },
-                report)
+                session.Report,
+                cancellationToken)
             .ConfigureAwait(false);
         try {
             await BlobOutput.CopyToStandardOutputAsync(
-                    client,
-                    file)
+                    session.Client,
+                    file,
+                    cancellationToken)
                 .ConfigureAwait(false);
         } finally {
             if (file.BlobId is { } blobId) {
-                await client.DeleteBlobAsync(blobId)
+                await session.Client.DeleteBlobAsync(blobId)
                     .ConfigureAwait(false);
             } else if (file.Path is { } path) {
                 TryDelete(path);
@@ -107,18 +102,17 @@ internal static partial class ToolkitClientCommandRunner {
         return 0;
     }
 
-    private static async Task<int> RunSerialTerminalAsync(
-        ToolkitRpcClient client,
-        CommandOptions options,
-        ConsoleRenderer console,
-        Action<TaskEventNotification> report) {
-        using var socket = await client.OpenSerialTerminalAsync(
+    public async Task<int> RunTerminalAsync(
+        SerialTerminalArguments options,
+        CancellationToken cancellationToken = default) {
+        await using var session = context.OpenRpcSession();
+        using var socket = await session.Client.OpenSerialTerminalAsync(
                 new SerialTerminalParams {
-                    PortName = RequireSerialPort(options),
-                    HistoryBytes = options.SerialHistoryBytes ??
-                        256 * 1024
+                    PortName = options.PortName,
+                    HistoryBytes = options.HistoryBytes
                 },
-                report)
+                session.Report,
+                cancellationToken)
             .ConfigureAwait(false);
         using var stop = new CancellationTokenSource();
         var output = PumpBinaryOutputAsync(
@@ -126,16 +120,16 @@ internal static partial class ToolkitClientCommandRunner {
             stop.Token);
         try {
             await SerialTerminalRunner.RunAsync(
-                    async (data, cancellationToken) => {
+                    async (data, token) => {
                         await socket.SendAsync(
                                 data,
                                 WebSocketMessageType.Binary,
                                 endOfMessage: true,
-                                cancellationToken)
+                                token)
                             .ConfigureAwait(false);
                     },
                     output,
-                    console,
+                    context.Console,
                     stop.Token)
                 .ConfigureAwait(false);
         } finally {

@@ -30,21 +30,22 @@ internal static class Application {
             console);
         var logger = loggerFactory.CreateLogger(
             "Ampheck.RockchipToolkit.Application");
+        var commandLine = new CommandLine(Console.Out);
 
         try {
             if (args.Length == 0) {
                 WriteMotd(console);
-                CommandLine.PrintHelp(["--help"], Console.Out);
+                commandLine.PrintHelp(["--help"]);
                 return 0;
             }
 
             if (args is ["--version"]) {
                 WriteMotd(console);
-                CommandLine.PrintVersion(Console.Out);
+                commandLine.PrintVersion();
                 return 0;
             }
 
-            if (CommandLine.TryPrintCompletion(args, Console.Out)) {
+            if (commandLine.TryPrintCompletion(args)) {
                 return 0;
             }
 
@@ -52,23 +53,21 @@ internal static class Application {
                 (IsHelpCommand(args[0]) ||
                     IsRootHelpOption(args[0]))) {
                 WriteMotd(console);
-                CommandLine.PrintHelp(["--help"], Console.Out);
+                commandLine.PrintHelp(["--help"]);
                 return 0;
             }
 
             if (IsHelpCommand(args[0])) {
-                CommandLine.PrintHelp(
-                    [.. args.Skip(1), "--help"],
-                    Console.Out);
+                commandLine.PrintHelp([.. args.Skip(1), "--help"]);
                 return 0;
             }
 
             if (HasOption(args, "--help", "-h", "-?")) {
-                CommandLine.PrintHelp(args, Console.Out);
+                commandLine.PrintHelp(args);
                 return 0;
             }
 
-            var invocation = CommandLine.Parse(args, Console.Out);
+            var invocation = commandLine.Parse(args);
             if (invocation is null) {
                 return 0;
             }

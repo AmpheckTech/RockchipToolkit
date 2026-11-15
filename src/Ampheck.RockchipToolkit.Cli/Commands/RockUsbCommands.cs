@@ -4,7 +4,7 @@ using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static partial class RockUsbCommands {
+internal sealed partial class RockUsbCommands(CommandParseState state) {
     private static readonly string[] StorageTypes = [
         "emmc",
         "sd-card",
@@ -18,99 +18,108 @@ internal static partial class RockUsbCommands {
         "disconnect"
     ];
 
-    public static void AddTo(
-        RootCommand root,
-        CommandParseState state) {
-        root.Add(CreateDevicesCommand(state));
+    public void Register(RootCommand root) {
+        root.Add(CreateDevicesCommand());
         root.Add(CreateInfoCommand(
-            state,
             CommandNames.Info,
             CommandNames.Info,
             "Read chip and flash information."));
-        root.Add(CreateChipCommand(state));
+        root.Add(CreateChipCommand());
         root.Add(CreateInfoCommand(
-            state,
             CommandNames.Capability,
             CommandNames.Capability,
             "Read device capabilities."));
-        root.Add(CreateLoaderCommand(state));
-        root.Add(CreateFlashCommand(state));
-        root.Add(CreateReadCommand(state));
-        root.Add(CreateWriteCommand(state));
-        root.Add(CreateEraseCommand(state));
-        root.Add(CreateStorageCommand(state));
-        root.Add(CreateResetCommand(state));
+        root.Add(CreateLoaderCommand());
+        root.Add(CreateFlashCommand());
+        root.Add(CreateReadCommand());
+        root.Add(CreateWriteCommand());
+        root.Add(CreateEraseCommand());
+        root.Add(CreateStorageCommand());
+        root.Add(CreateResetCommand());
     }
 
-    private static Command CreateDevicesCommand(
-        CommandParseState state) {
+    private Command CreateDevicesCommand() {
         var command = new Command(
             CommandNames.Devices,
             "List connected RockUSB devices.");
-        var options = new CommandOptions();
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Devices,
-            (context, _) => ExecuteRpc(
+        var options = new RockUsbOptionSet(
+            allowLoader: false,
+            allowFetch: false);
+        options.AddTo(command);
+        command.SetAction(parsed => {
+            var values = options.Parse(parsed);
+            state.Invocation = new CliInvocation(
                 CommandNames.Devices,
-                options,
-                context));
+                RequiresServer: true,
+                (context, cancellationToken) =>
+                    new DeviceCommandRunner(context).RunDevicesAsync(
+                        values.Target,
+                        cancellationToken));
+            return 0;
+        });
         return command;
     }
 
-    private static Command CreateInfoCommand(
-        CommandParseState state,
+    private Command CreateInfoCommand(
         string name,
         string canonicalCommand,
         string description) {
         var command = new Command(name, description);
-        var options = new CommandOptions();
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            canonicalCommand,
-            (context, _) => ExecuteRpc(
+        var options = new RockUsbOptionSet(
+            allowLoader: true,
+            allowFetch: false);
+        options.AddTo(command);
+        command.SetAction(parsed => {
+            var values = options.Parse(parsed);
+            var query = new DeviceQueryArguments(
+                values.Target,
+                new LoaderArguments(
+                    values.Loader,
+                    values.FetchLocation));
+            state.Invocation = new CliInvocation(
                 canonicalCommand,
-                options,
-                context),
-            allowLoader: true);
+                RequiresServer: true,
+                (context, cancellationToken) => {
+                    var runner = new DeviceCommandRunner(context);
+                    return canonicalCommand switch {
+                        CommandNames.Info =>
+                            runner.RunInfoAsync(
+                                query,
+                                cancellationToken),
+                        CommandNames.ChipInfo =>
+                            runner.RunChipInfoAsync(
+                                query,
+                                cancellationToken),
+                        CommandNames.ChipId =>
+                            runner.RunChipIdAsync(
+                                query,
+                                cancellationToken),
+                        _ => runner.RunCapabilityAsync(
+                            query,
+                            cancellationToken)
+                    };
+                });
+            return 0;
+        });
         return command;
     }
 
-    private static Command CreateChipCommand(
-        CommandParseState state) {
+    private Command CreateChipCommand() {
         var command = new Command(
             "chip",
             "Read chip-level information.");
         command.Add(CreateInfoCommand(
-            state,
             "info",
             CommandNames.ChipInfo,
             "Read chip information."));
-
-        var id = new Command(
+        command.Add(CreateInfoCommand(
             "id",
-            "Read the flash ID.");
-        var options = new CommandOptions();
-        CommandOptionsBinder.AddRockUsbOptions(
-            id,
-            state,
-            options,
             CommandNames.ChipId,
-            (context, _) => ExecuteRpc(
-                CommandNames.ChipId,
-                options,
-                context),
-            allowLoader: true);
-        command.Add(id);
+            "Read the flash ID."));
         return command;
     }
 
-    private static Command CreateLoaderCommand(
-        CommandParseState state) {
+    private Command CreateLoaderCommand() {
         var command = new Command(
             CommandNames.Loader,
             "Download a loader while the device is in MaskROM mode.");
@@ -118,25 +127,32 @@ internal static partial class RockUsbCommands {
             "loader") {
             Description = "Loader file, URL, or UNC path."
         };
-        var options = new CommandOptions();
+        var options = new RockUsbOptionSet(
+            allowLoader: false,
+            allowFetch: true);
         command.Add(location);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Loader,
-            (context, _) => ExecuteRpc(
+        options.AddTo(command);
+        command.SetAction(parsed => {
+            var values = options.Parse(parsed);
+            var loader = new DeviceLoaderArguments(
+                values.Target,
+                parsed.GetValue(location) ??
+                    throw new ArgumentException(
+                        "A loader path is required."),
+                values.FetchLocation);
+            state.Invocation = new CliInvocation(
                 CommandNames.Loader,
-                options,
-                context),
-            allowFetch: true,
-            bind: parsed => options.File =
-                parsed.GetValue(location));
+                RequiresServer: true,
+                (context, cancellationToken) =>
+                    new DeviceCommandRunner(context).RunLoaderAsync(
+                        loader,
+                        cancellationToken));
+            return 0;
+        });
         return command;
     }
 
-    private static Command CreateFlashCommand(
-        CommandParseState state) {
+    private Command CreateFlashCommand() {
         var command = new Command(
             CommandNames.Flash,
             "Flash an update image or a firmware directory.");
@@ -146,226 +162,31 @@ internal static partial class RockUsbCommands {
                 "update image, firmware directory, or HTTP(S) URL."
         };
         var noReset = NoResetOption();
-        var options = new CommandOptions();
+        var options = new RockUsbOptionSet(
+            allowLoader: true,
+            allowFetch: true);
         command.Add(source);
         command.Add(noReset);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Flash,
-            (context, _) => ExecuteRpc(
-                CommandNames.Flash,
-                options,
-                context),
-            allowLoader: true,
-            allowFetch: true,
-            bind: parsed => {
-                options.Source =
-                    parsed.GetValue(source);
-                options.ResetAfterFlash =
-                    !parsed.GetValue(noReset);
-            });
-        return command;
-    }
-
-    private static Command CreateReadCommand(
-        CommandParseState state) {
-        var command = new Command(
-            CommandNames.Read,
-            "Read sectors from the device.");
-        var output = new Argument<string>(
-            "output") {
-            Description = "Local path or HTTP(S) PUT target."
-        };
-        var sector = SectorOption(required: false);
-        var count = CountOption(required: false);
-        var options = new CommandOptions();
-        command.Add(output);
-        command.Add(sector);
-        command.Add(count);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Read,
-            (context, _) => ExecuteRpc(
-                CommandNames.Read,
-                options,
-                context),
-            allowLoader: true,
-            bind: parsed => {
-                options.File =
-                    parsed.GetValue(output);
-                options.Sector =
-                    ValueParser.ParseOptionalUInt32(
-                        "--sector",
-                        parsed.GetValue(sector));
-                options.Count =
-                    ValueParser.ParseOptionalUInt16(
-                        "--count",
-                        parsed.GetValue(count));
-            });
-        return command;
-    }
-
-    private static Command CreateWriteCommand(
-        CommandParseState state) {
-        var command = new Command(
-            CommandNames.Write,
-            "Write a sector-aligned file to the device.");
-        var input = new Argument<string>(
-            "input") {
-            Description = "Local path, URL, or UNC path."
-        };
-        var sector = SectorOption(required: true);
-        var backup = new Option<string?>(
-            "--backup",
-            "-b") {
-            Description = "Back up the target range before writing."
-        };
-        var noErase = new Option<bool>("--no-erase") {
-            Description = "Skip the default erase before writing."
-        };
-        var length = new Option<string?>("--length") {
-            Description = "Number of bytes to write; defaults to the remaining file."
-        };
-        var sourceOffset = new Option<string?>("--source-offset") {
-            Description = "Byte offset into the input file."
-        };
-        var options = new CommandOptions();
-        command.Add(input);
-        command.Add(sector);
-        command.Add(backup);
-        command.Add(noErase);
-        command.Add(length);
-        command.Add(sourceOffset);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Write,
-            (context, _) => ExecuteRpc(
-                CommandNames.Write,
-                options,
-                context),
-            allowLoader: true,
-            allowFetch: true,
-            bind: parsed => {
-                options.File =
-                    parsed.GetValue(input);
-                options.Sector =
-                    ValueParser.ParseOptionalUInt32(
-                        "--sector",
-                        parsed.GetValue(sector));
-                options.Backup = parsed.GetValue(backup);
-                options.EraseBeforeWrite =
-                    !parsed.GetValue(noErase);
-                options.WriteLength =
-                    ValueParser.ParseOptionalInt64(
-                        "--length",
-                        parsed.GetValue(length));
-                options.WriteSourceOffset =
-                    ValueParser.ParseOptionalInt64(
-                        "--source-offset",
-                        parsed.GetValue(sourceOffset));
-            });
-        return command;
-    }
-
-    private static Command CreateEraseCommand(
-        CommandParseState state) {
-        var command = new Command(
-            CommandNames.Erase,
-            "Erase a sector range.");
-        var sector = SectorOption(required: true);
-        var count = CountOption(required: true);
-        var options = new CommandOptions();
-        command.Add(sector);
-        command.Add(count);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Erase,
-            (context, _) => ExecuteRpc(
-                CommandNames.Erase,
-                options,
-                context),
-            allowLoader: true,
-            bind: parsed => {
-                options.Sector =
-                    ValueParser.ParseOptionalUInt32(
-                        "--sector",
-                        parsed.GetValue(sector));
-                options.Count =
-                    ValueParser.ParseOptionalUInt16(
-                        "--count",
-                        parsed.GetValue(count));
-            });
-        return command;
-    }
-
-    private static Command CreateStorageCommand(
-        CommandParseState state) {
-        var command = new Command(
-            CommandNames.Storage,
-            "Change the active storage device.");
-        var storage = new Argument<string>(
-            "type") {
-            Description = string.Join(", ", StorageTypes)
-        };
-        storage.AcceptOnlyFromAmong(StorageTypes);
-        var options = new CommandOptions();
-        command.Add(storage);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Storage,
-            (context, _) => ExecuteRpc(
-                CommandNames.Storage,
-                options,
-                context),
-            allowLoader: true,
-            bind: parsed => {
-                options.Storage = ParseStorage(
-                    parsed.GetValue(storage) ??
+        options.AddTo(command);
+        command.SetAction(parsed => {
+            var values = options.Parse(parsed);
+            var flash = new FirmwareFlashArguments(
+                values.Target,
+                parsed.GetValue(source) ??
                     throw new ArgumentException(
-                        "A storage type is required."));
-            });
-        return command;
-    }
-
-    private static Command CreateResetCommand(
-        CommandParseState state) {
-        var command = new Command(
-            CommandNames.Reset,
-            "Reset or disconnect the device.");
-        var modeArgument = new Argument<string?>(
-            "mode") {
-            Arity = ArgumentArity.ZeroOrOne,
-            Description = "Reset mode."
-        };
-        modeArgument.AcceptOnlyFromAmong(ResetModes);
-        var options = new CommandOptions();
-        command.Add(modeArgument);
-        CommandOptionsBinder.AddRockUsbOptions(
-            command,
-            state,
-            options,
-            CommandNames.Reset,
-            (context, _) => ExecuteRpc(
-                CommandNames.Reset,
-                options,
-                context),
-            allowLoader: true,
-            bind: parsed => {
-                var value = parsed.GetValue(modeArgument);
-                options.Reset = value is null
-                    ? ToolkitResetMode.Normal
-                    : ParseReset(value);
-            });
+                        "A firmware source is required."),
+                values.FetchLocation,
+                values.Loader,
+                !parsed.GetValue(noReset));
+            state.Invocation = new CliInvocation(
+                CommandNames.Flash,
+                RequiresServer: true,
+                (context, cancellationToken) =>
+                    new StorageCommandRunner(context).RunFlashAsync(
+                        flash,
+                        cancellationToken));
+            return 0;
+        });
         return command;
     }
 

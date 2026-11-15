@@ -10,24 +10,22 @@ namespace Ampheck.RockchipToolkit.Cli.Execution;
 
 internal static class ServerCommandRunner {
     public static async Task<int> RunNodaemonAsync(
-        CommandOptions options,
+        ServerNodaemonArguments options,
         CliCommandContext context) {
         var endpoint = ToolkitEndpoint.Parse(
-            options.ServerListen ??
-            throw new ArgumentException(
-                "A server listen endpoint is required."));
-        var token = options.ServerAccessToken ??
+            options.Listen);
+        var token = options.Token ??
             Environment.GetEnvironmentVariable(
                 "ARKT_SERVER_TOKEN");
         var instanceId = Guid.NewGuid().ToString("D");
         var hostName = string.IsNullOrWhiteSpace(
-                options.ServerHostName)
+                options.HostName)
             ? Environment.MachineName
-            : options.ServerHostName;
-        var idleSeconds = options.ServerIdleSeconds ?? 0;
+            : options.HostName;
+        var idleSeconds = options.IdleSeconds;
         var limits = CreateTransferLimits(options);
         var serialHistoryKiB =
-            options.ServerSerialHistoryKiB ?? 256;
+            options.SerialHistoryKiB;
         var stateStore =
             new LocalServerStateStore(context.StatePath);
         if (serialHistoryKiB <= 0) {
@@ -102,10 +100,10 @@ internal static class ServerCommandRunner {
     }
 
     private static ToolkitTransferLimits CreateTransferLimits(
-        CommandOptions options) {
+        ServerNodaemonArguments options) {
         return new ToolkitTransferLimits {
             MaximumBlobBytes = ToBytes(
-                options.ServerMaxBlobMiB ?? 32 * 1024)
+                options.MaximumBlobMiB)
         };
     }
 

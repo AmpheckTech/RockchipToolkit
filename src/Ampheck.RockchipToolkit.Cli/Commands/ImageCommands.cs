@@ -3,18 +3,17 @@ using Ampheck.RockchipToolkit.Cli.Execution;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static class ImageCommands {
-    public static Command Create(CommandParseState state) {
+internal sealed class ImageCommands(CommandParseState state) {
+    public void Register(RootCommand root) {
         var image = new Command(
             CommandNames.Image,
             "Unpack or pack Rockchip RKFW/RKAF images.");
-        image.Add(CreateUnpackCommand(state));
-        image.Add(CreatePackCommand(state));
-        return image;
+        image.Add(CreateUnpackCommand());
+        image.Add(CreatePackCommand());
+        root.Add(image);
     }
 
-    private static Command CreateUnpackCommand(
-        CommandParseState state) {
+    private Command CreateUnpackCommand() {
         var command = new Command(
             "unpack",
             "Extract an RKFW or RKAF image into a firmware directory.");
@@ -28,15 +27,13 @@ internal static class ImageCommands {
         command.Add(output);
         AddCommonOptions(
             command,
-            state,
             CommandNames.ImageUnpack,
             input,
             output);
         return command;
     }
 
-    private static Command CreatePackCommand(
-        CommandParseState state) {
+    private Command CreatePackCommand() {
         var command = new Command(
             "pack",
             "Build an RKFW or RKAF image.");
@@ -54,7 +51,6 @@ internal static class ImageCommands {
         command.Add(chip);
         AddCommonOptions(
             command,
-            state,
             CommandNames.ImagePack,
             input,
             output,
@@ -62,9 +58,8 @@ internal static class ImageCommands {
         return command;
     }
 
-    private static void AddCommonOptions(
+    private void AddCommonOptions(
         Command command,
-        CommandParseState state,
         string canonicalCommand,
         Argument<string> input,
         Argument<string> output,
@@ -75,23 +70,23 @@ internal static class ImageCommands {
         var verbose = new Option<bool>("--verbose", "-v") {
             Description = "Enable informational and debug logs."
         };
-        var options = new CommandOptions();
         command.Add(force);
         command.Add(verbose);
         command.SetAction(parsed => {
-            options.ImageInput = parsed.GetValue(input) ??
-                throw new ArgumentException("An input path is required.");
-            options.ImageOutput = parsed.GetValue(output) ??
-                throw new ArgumentException("An output path is required.");
-            options.ImageForce = parsed.GetValue(force);
-            options.ImageChip = chip is null
-                ? null
-                : parsed.GetValue(chip);
+            var options = new ImageCommandArguments(
+                parsed.GetValue(input) ??
+                    throw new ArgumentException(
+                        "An input path is required."),
+                parsed.GetValue(output) ??
+                    throw new ArgumentException(
+                        "An output path is required."),
+                parsed.GetValue(force),
+                chip is null ? null : parsed.GetValue(chip),
+                canonicalCommand == CommandNames.ImageUnpack);
             state.Invocation = new CliInvocation(
                 canonicalCommand,
                 RequiresServer: false,
                 (context, _) => ImageCommandRunner.RunAsync(
-                    canonicalCommand,
                     options,
                     context.Console));
             return 0;

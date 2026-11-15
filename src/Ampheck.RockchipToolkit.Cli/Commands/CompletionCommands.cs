@@ -3,7 +3,7 @@ using Ampheck.RockchipToolkit.Cli.Infrastructure;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static class CompletionCommands {
+internal sealed class CompletionCommands(CommandParseState state) {
     private static readonly string[] Shells = [
         "bash",
         "zsh",
@@ -11,7 +11,7 @@ internal static class CompletionCommands {
         "fish"
     ];
 
-    public static Command Create(CommandParseState state) {
+    public void Register(RootCommand root) {
         var command = new Command(
             CommandNames.Completion,
             "Print a shell completion script.");
@@ -33,6 +33,6 @@ internal static class CompletionCommands {
                 });
             return 0;
         });
-        return command;
+        root.Add(command);
     }
 }

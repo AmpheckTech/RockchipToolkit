@@ -6,8 +6,7 @@ namespace Ampheck.RockchipToolkit.Cli.Execution;
 
 internal static class ImageCommandRunner {
     public static async Task<int> RunAsync(
-        string command,
-        CommandOptions options,
+        ImageCommandArguments options,
         ConsoleRenderer console) {
         using var stop = new CancellationTokenSource();
         ConsoleCancelEventHandler handler = (_, eventArgs) => {
@@ -15,37 +14,37 @@ internal static class ImageCommandRunner {
             stop.Cancel();
         };
         Console.CancelKeyPress += handler;
-        var unpacking = command == CommandNames.ImageUnpack;
+        var unpacking = options.Unpack;
         using var progress = new ImageProgressDisplay(
             console,
             unpacking ? "unpack" : "pack");
         console.StartActivity(unpacking
-            ? $"Unpacking {options.ImageInput}"
-            : $"Packing {options.ImageInput}");
+            ? $"Unpacking {options.Input}"
+            : $"Packing {options.Input}");
         try {
             if (unpacking) {
                 await RockchipImageExtractor.UnpackAsync(
-                        options.ImageInput!,
-                        options.ImageOutput!,
-                        options.ImageForce,
+                        options.Input,
+                        options.Output,
+                        options.Force,
                         progress,
                         stop.Token)
                     .ConfigureAwait(false);
                 progress.Complete();
                 console.CompleteActivity(
-                    $"Unpacked {options.ImageInput} to {options.ImageOutput}");
+                    $"Unpacked {options.Input} to {options.Output}");
             } else {
                 await RockchipImagePacker.PackAsync(
-                        options.ImageInput!,
-                        options.ImageOutput!,
-                        options.ImageForce,
-                        options.ImageChip,
+                        options.Input,
+                        options.Output,
+                        options.Force,
+                        options.Chip,
                         progress,
                         stop.Token)
                     .ConfigureAwait(false);
                 progress.Complete();
                 console.CompleteActivity(
-                    $"Packed {options.ImageInput} to {options.ImageOutput}");
+                    $"Packed {options.Input} to {options.Output}");
             }
 
             return 0;

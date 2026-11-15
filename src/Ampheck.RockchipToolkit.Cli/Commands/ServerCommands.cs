@@ -4,10 +4,8 @@ using Ampheck.RockchipToolkit.Rpc;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
 
-internal static class ServerCommands {
-    public static void AddTo(
-        RootCommand root,
-        CommandParseState state) {
+internal sealed class ServerCommands(CommandParseState state) {
+    public void Register(RootCommand root) {
         var server = new Command(
             CommandNames.Server,
             "Run the optional toolkit server.");
@@ -54,18 +52,15 @@ internal static class ServerCommands {
         nodaemon.Add(verbose);
         nodaemon.Add(maxBlob);
         nodaemon.Add(serialHistory);
-        var options = new CommandOptions();
         nodaemon.SetAction(parsed => {
-            options.ServerListen = parsed.GetValue(listen);
-            options.ServerAccessToken = parsed.GetValue(token);
-            options.ServerHostName =
-                parsed.GetValue(hostName);
-            options.ServerIdleSeconds =
-                parsed.GetValue(idleTimeout);
-            options.ServerMaxBlobMiB =
-                parsed.GetValue(maxBlob);
-            options.ServerSerialHistoryKiB =
-                parsed.GetValue(serialHistory);
+            var options = new ServerNodaemonArguments(
+                parsed.GetValue(listen) ??
+                    ToolkitServerDefaults.Endpoint,
+                parsed.GetValue(token),
+                parsed.GetValue(hostName),
+                parsed.GetValue(idleTimeout),
+                parsed.GetValue(maxBlob),
+                parsed.GetValue(serialHistory));
             state.Invocation = new CliInvocation(
                 CommandNames.ServerNodaemon,
                 RequiresServer: false,
@@ -76,26 +71,22 @@ internal static class ServerCommands {
         });
         server.Add(nodaemon);
         server.Add(CreateControlCommand(
-            state,
             "start",
             CommandNames.ServerStart,
             "Start the toolkit server in the background."));
         server.Add(CreateControlCommand(
-            state,
             "stop",
             CommandNames.ServerStop,
             "Stop the background toolkit server."));
         server.Add(CreateControlCommand(
-            state,
             "status",
             CommandNames.ServerStatus,
             "Show background toolkit server status."));
         root.Add(server);
-        root.Add(CreateDiscoverCommand(state));
+        root.Add(CreateDiscoverCommand());
     }
 
-    private static Command CreateControlCommand(
-        CommandParseState state,
+    private Command CreateControlCommand(
         string name,
         string canonicalCommand,
         string description) {
@@ -116,8 +107,7 @@ internal static class ServerCommands {
         return command;
     }
 
-    private static Command CreateDiscoverCommand(
-        CommandParseState state) {
+    private Command CreateDiscoverCommand() {
         var timeout = new Option<int>("--timeout") {
             Description = "Discovery wait time in seconds.",
             DefaultValueFactory = _ => 2

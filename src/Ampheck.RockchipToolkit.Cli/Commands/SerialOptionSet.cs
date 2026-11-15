@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Ampheck.RockchipToolkit.Rpc;
+using Ampheck.RockchipToolkit.Rpc.JsonRpc;
 using Ampheck.RockchipToolkit.Transport.Serial;
 
 namespace Ampheck.RockchipToolkit.Cli.Commands;
@@ -55,13 +56,11 @@ internal sealed class SerialOptionSet {
         command.Add(NoRts);
     }
 
-    public void Apply(
-        CommandOptions target,
+    public SerialOpenArguments Parse(
         ParseResult parsed,
         string portName) {
-        target.SerialPort = portName;
-        target.SerialBaudRate = parsed.GetValue(Baud);
-        if (target.SerialBaudRate is not > 0) {
+        var baudRate = parsed.GetValue(Baud);
+        if (baudRate is not > 0) {
             throw new ArgumentException(
                 "--baudrate must be greater than zero.");
         }
@@ -73,27 +72,32 @@ internal sealed class SerialOptionSet {
                 "--data-bits must be 5, 6, 7, or 8.");
         }
 
-        target.SerialDataBits = dataBits;
-        target.SerialParity = parsed.GetValue(Parity) switch {
-            "odd" => ToolkitSerialParity.Odd,
-            "even" => ToolkitSerialParity.Even,
-            "mark" => ToolkitSerialParity.Mark,
-            "space" => ToolkitSerialParity.Space,
-            _ => ToolkitSerialParity.None
-        };
-        target.SerialStopBits = parsed.GetValue(StopBits) switch {
-            "one-point-five" => ToolkitSerialStopBits.OnePointFive,
-            "two" => ToolkitSerialStopBits.Two,
-            _ => ToolkitSerialStopBits.One
-        };
-        target.SerialHandshake = parsed.GetValue(Handshake) switch {
-            "xon-xoff" => ToolkitSerialHandshake.XOnXOff,
-            "rts-cts" => ToolkitSerialHandshake.RequestToSend,
-            "rts-cts-xon-xoff" =>
-                ToolkitSerialHandshake.RequestToSendXOnXOff,
-            _ => ToolkitSerialHandshake.None
-        };
-        target.SerialDtrEnable = !parsed.GetValue(NoDtr);
-        target.SerialRtsEnable = !parsed.GetValue(NoRts);
+        return new SerialOpenArguments(
+            portName,
+            new SerialPortSettings {
+                BaudRate = baudRate,
+                DataBits = dataBits,
+                Parity = parsed.GetValue(Parity) switch {
+                    "odd" => ToolkitSerialParity.Odd,
+                    "even" => ToolkitSerialParity.Even,
+                    "mark" => ToolkitSerialParity.Mark,
+                    "space" => ToolkitSerialParity.Space,
+                    _ => ToolkitSerialParity.None
+                },
+                StopBits = parsed.GetValue(StopBits) switch {
+                    "one-point-five" => ToolkitSerialStopBits.OnePointFive,
+                    "two" => ToolkitSerialStopBits.Two,
+                    _ => ToolkitSerialStopBits.One
+                },
+                Handshake = parsed.GetValue(Handshake) switch {
+                    "xon-xoff" => ToolkitSerialHandshake.XOnXOff,
+                    "rts-cts" => ToolkitSerialHandshake.RequestToSend,
+                    "rts-cts-xon-xoff" =>
+                        ToolkitSerialHandshake.RequestToSendXOnXOff,
+                    _ => ToolkitSerialHandshake.None
+                },
+                DtrEnable = !parsed.GetValue(NoDtr),
+                RtsEnable = !parsed.GetValue(NoRts)
+            });
     }
 }
