@@ -94,7 +94,7 @@ arkt adb reboot loader
 
 ## 资产
 
-外部资产通过版本化 TOML manifest 按需下载、校验和缓存，不随 ARKT 发布。
+第三方二进制不随 ARKT 发布。首次使用时，ARKT 按 manifest 从上游固定版本下载，校验后存入本地缓存。
 
 ```bash
 arkt assets root
@@ -108,14 +108,8 @@ arkt assets prune --dry-run
 arkt assets prune --yes
 ```
 
-Manifest 使用 `schema = 1`，每个资产固定 `commit`、`path`、`output`、
-`sha256`、`purpose` 和 `optional`。
-缓存默认位于平台应用数据目录，可通过 `ARKT_ASSETS_DIR` 覆盖。
-`--output` 默认复制文件；只有显式传入 `--link` 才使用 hardlink。
-`verify` 只读取本地缓存，始终不会访问网络。
-同一 manifest 路径再次成功 `ensure` 时会替换旧引用集合。
-`forget` 只删除 manifest 引用记录，不删除缓存文件。
-`rkbin` 文件从固定上游 commit 获取；ARKT 不内置这些二进制，也不授予额外权利。
+缓存目录可用 `ARKT_ASSETS_DIR` 修改。`--output` 默认复制文件，`--link` 使用 hardlink。
+rkbin 来自 Rockchip 上游仓库，ARKT 不改变其授权。
 
 ## 其他
 
