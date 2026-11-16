@@ -97,7 +97,7 @@ internal static class RockUsbBootTransfer {
                 pending,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (transferred != pending.Length) {
+        if (transferred is not (0 or 1)) {
             throw new IOException(
                 $"MaskROM BOOT pending packet 0x{requestCode:X4} " +
                 $"returned {transferred}/{pending.Length} bytes.");

@@ -41,9 +41,16 @@ internal static class RockchipImageReader {
 
         var imageHeader = magic switch {
             RockchipImageLayout.RkfwMagic => ReadFirmwareHeader(stream, header),
-            BootMagic or LegacyBootMagic => ReadBootHeader(stream, header),
+            BootMagic => ReadBootHeader(
+                stream,
+                header,
+                RockchipImageKind.Boot),
+            LegacyBootMagic => ReadBootHeader(
+                stream,
+                header,
+                RockchipImageKind.Loader),
             _ => throw new InvalidDataException(
-                "Invalid RKIMAGE, BOOT, RKNS, or RKSS signature.")
+                "Invalid RKIMAGE, BOOT, LDR, RKNS, or RKSS signature.")
         };
 
         var boot = ReadBootEntries(stream, imageHeader);
@@ -119,10 +126,11 @@ internal static class RockchipImageReader {
 
     private static RockchipImageHeader ReadBootHeader(
         Stream stream,
-        ReadOnlySpan<byte> header
+        ReadOnlySpan<byte> header,
+        RockchipImageKind kind
     ) {
         if (stream.Length > uint.MaxValue) {
-            throw new InvalidDataException("Standalone BOOT images larger than 4 GiB are not supported.");
+            throw new InvalidDataException("Rockchip boot images larger than 4 GiB are not supported.");
         }
 
         var headerSize = U16(header, 4);
@@ -140,7 +148,7 @@ internal static class RockchipImageReader {
             0,
             U32(header, 21),
             header[43] == 'S',
-            RockchipImageKind.Boot);
+            kind);
     }
 
     private static (
@@ -154,7 +162,7 @@ internal static class RockchipImageReader {
             header.BootOffset > stream.Length ||
             header.BootSize > stream.Length - header.BootOffset) {
             return (
-                RockchipImageKind.Boot,
+                header.Kind,
                 HeaderLength,
                 Array.Empty<RockchipBootEntry>());
         }
@@ -177,7 +185,7 @@ internal static class RockchipImageReader {
 
         if (magic is not (BootMagic or LegacyBootMagic)) {
             return (
-                RockchipImageKind.Boot,
+                header.Kind,
                 HeaderLength,
                 Array.Empty<RockchipBootEntry>());
         }
@@ -189,7 +197,7 @@ internal static class RockchipImageReader {
         }
 
         return (
-            RockchipImageKind.Boot,
+            header.Kind,
             U16(data, 4),
             entries.AsReadOnly());
     }
