@@ -1,14 +1,6 @@
 # Ampheck Rockchip Toolkit
 
-Rockchip 设备命令行工具，支持 RockUSB、串口、ADB 和固件镜像处理。
-
-## 功能
-
-- RockUSB 设备信息、烧录、读写、擦除和备份
-- `update.img`、固件目录和 ZIP 烧录
-- 串口监控和发送
-- ADB Shell、Push、Pull 和重启
-- RKFW/RKAF 打包与拆包
+Rockchip 设备命令行工具，支持 RockUSB、串口、ADB、固件镜像和外部资产缓存。
 
 支持 Windows、Linux 和 macOS ARM64。
 
@@ -94,22 +86,17 @@ arkt adb reboot loader
 
 ## 资产
 
-第三方二进制不随 ARKT 发布。首次使用时，ARKT 按 manifest 从上游固定版本下载，校验后存入本地缓存。
+第三方二进制按 manifest 下载到本地缓存，不随 ARKT 发布。缓存目录可用 `ARKT_ASSETS_DIR` 修改。
 
 ```bash
 arkt assets root
-arkt assets ensure --manifest manifests/rkbin-rk3588.toml
 arkt assets ensure --manifest manifests/rkbin-rk3588.toml --output ./assets
-arkt assets ensure --manifest manifests/rkbin-rk3588.toml --output ./assets --link
 arkt assets verify --manifest manifests/rkbin-rk3588.toml
 arkt assets list
-arkt assets forget --manifest manifests/rkbin-rk3588.toml
 arkt assets prune --dry-run
-arkt assets prune --yes
 ```
 
-缓存目录可用 `ARKT_ASSETS_DIR` 修改。`--output` 默认复制文件，`--link` 使用 hardlink。
-rkbin 来自 Rockchip 上游仓库，ARKT 不改变其授权。
+rkbin 从 Rockchip 上游仓库获取，授权不变。
 
 ## 其他
 
@@ -121,15 +108,7 @@ arkt completion bash
 
 ## 构建
 
-最终发布单个 `arkt` 可执行文件。
-需要 .NET 10 SDK：
-
-```bash
-dotnet restore Ampheck.RockchipToolkit.slnx
-dotnet build Ampheck.RockchipToolkit.slnx -c Release
-```
-
-发布：
+需要 .NET 10 SDK，执行：
 
 ```bash
 dotnet publish Ampheck.RockchipToolkit.csproj \
