@@ -1,12 +1,3 @@
 <Solution>
-  <Project Path="src/Ampheck.RockchipToolkit.Generators/Ampheck.RockchipToolkit.Generators.csproj" />
-  <Project Path="src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj" />
-  <Project Path="src/Ampheck.RockchipToolkit.Mcp/Ampheck.RockchipToolkit.Mcp.csproj" />
-  <Project Path="src/Ampheck.Adb/Ampheck.Adb.csproj" />
-  <Project Path="src/Transports/Ampheck.RockchipToolkit.Transport.LibUsb/Ampheck.RockchipToolkit.Transport.LibUsb.csproj" />
-  <Project Path="src/Transports/Ampheck.RockchipToolkit.Transport.RockUsb/Ampheck.RockchipToolkit.Transport.RockUsb.csproj" />
-  <Project Path="src/Transports/Ampheck.RockchipToolkit.Transport.Serial/Ampheck.RockchipToolkit.Transport.Serial.csproj" />
-  <Project Path="src/Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
-  <Project Path="src/Ampheck.RockchipToolkit.Rpc/Ampheck.RockchipToolkit.Rpc.csproj" />
-  <Project Path="src/Ampheck.RockchipToolkit.Server/Ampheck.RockchipToolkit.Server.csproj" />
+  <Project Path="Ampheck.RockchipToolkit.csproj" />
 </Solution>

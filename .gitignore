@@ -1,8 +1,6 @@
 # .NET build output
 **/bin/
 **/obj/
-**/TestResults/
-**/BenchmarkDotNet.Artifacts/
 
 # IDE and user state
 .vs/
@@ -29,14 +27,11 @@
 artifacts/
 packages/
 
-# NativeAOT and publish output
+# Publish output
 publish/
 dist/
 release/
 
-# Tool and coverage output
-.coverage
-coverage/
 *.profraw
 *.dbg
 

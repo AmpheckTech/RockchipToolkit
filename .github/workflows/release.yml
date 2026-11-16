@@ -1,4 +1,4 @@
-name: Release AOT
+name: Release Single File
 
 on:
   push:
@@ -34,6 +34,8 @@ jobs:
             rid: win-x64
           - os: windows-11-arm
             rid: win-arm64
+          - os: macos-latest
+            rid: osx-arm64
 
     steps:
       - name: Checkout
@@ -71,10 +73,6 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
 
-      - name: Install Linux NativeAOT prerequisites
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
-
       - name: Restore
         run: dotnet restore Ampheck.RockchipToolkit.slnx -r ${{ matrix.rid }}
 
@@ -82,16 +80,13 @@ jobs:
         shell: bash
         run: >
           dotnet publish
-          src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj
-          -c Release
-          -r ${{ matrix.rid }}
-          --self-contained true
-          --no-restore
-          -p:Version="$VERSION"
+          Ampheck.RockchipToolkit.csproj
+          -c Release -r ${{ matrix.rid }} --self-contained true
+          --no-restore -p:Version="$VERSION"
           -o dist/arkt/${{ matrix.rid }}
 
-      - name: Prepare Linux binaries
-        if: runner.os == 'Linux'
+      - name: Prepare Unix binary
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release
@@ -99,7 +94,7 @@ jobs:
             "dist/arkt/${{ matrix.rid }}/arkt" \
             "release/arkt-v${VERSION}-${{ matrix.rid }}"
 
-      - name: Prepare Windows binaries
+      - name: Prepare Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |

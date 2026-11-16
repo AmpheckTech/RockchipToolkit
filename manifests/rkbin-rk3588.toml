@@ -1,0 +1,35 @@
+# Verified at commit 3e288fe814e059dd06833495f845cab04ac20a5c; not Git LFS.
+schema = 1
+provider = "rockchip-rkbin"
+
+[[assets]]
+commit = "3e288fe814e059dd06833495f845cab04ac20a5c"
+path = "bin/rk35/rk3588_spl_v1.14.bin"
+output = "rk3588_spl_v1.14.bin"
+sha256 = "b811b90b6847dc251838e82036c328f00eaacefe94659432265a0ccb0fc8f4e5"
+purpose = "RK3588 SPL boot component"
+optional = false
+
+[[assets]]
+commit = "3e288fe814e059dd06833495f845cab04ac20a5c"
+path = "bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.24.bin"
+output = "rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.24.bin"
+sha256 = "2853a0da7ab895af43d50615af73eccf0694115dd0202483ee1c93c9071a42c3"
+purpose = "RK3588 DDR initialization firmware"
+optional = false
+
+[[assets]]
+commit = "3e288fe814e059dd06833495f845cab04ac20a5c"
+path = "bin/rk35/rk3588_bl31_v1.56.elf"
+output = "rk3588_bl31_v1.56.elf"
+sha256 = "2864c2fc36333e03e7e3fe6459225d320d310850b4ac7620d1f3601efb7d4a9b"
+purpose = "RK3588 BL31 firmware"
+optional = false
+
+[[assets]]
+commit = "3e288fe814e059dd06833495f845cab04ac20a5c"
+path = "bin/rk35/rk3588_bl32_v1.23.bin"
+output = "rk3588_bl32_v1.23.bin"
+sha256 = "cb4ec2d0d8986b22cc55dbcf57c499f10fcca124bcd1e9a5d62cbf9ce0f40636"
+purpose = "RK3588 BL32 firmware"
+optional = false
