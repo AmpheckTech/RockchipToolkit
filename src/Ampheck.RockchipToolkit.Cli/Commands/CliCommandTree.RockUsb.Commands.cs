@@ -140,6 +140,9 @@ internal sealed partial class CliCommandTree {
         var source = CreateArgument<string>(
             "source",
             "Firmware image or directory.");
+        var watch = new Option<bool>("--watch", "-w") {
+            Description = "Flash each new MaskROM device as it appears."
+        };
         var noReset = new Option<bool>("--no-reset") {
             Description = "Do not reset after flashing."
         };
@@ -148,15 +151,30 @@ internal sealed partial class CliCommandTree {
             "flash",
             "Flash an update image or firmware directory.") {
             source,
+            watch,
             noReset
         };
         options.AddTo(command);
-        command.SetAction((parsed, token) => RunFlashAsync(
-            parsed.GetValue(source)!,
-            parsed.GetValue(options.Loader!),
-            options.ReadTarget(parsed),
-            !parsed.GetValue(noReset),
-            token));
+        command.SetAction((parsed, token) => {
+            var sourceValue = parsed.GetValue(source)!;
+            var loaderValue = parsed.GetValue(options.Loader!);
+            var target = options.ReadTarget(parsed);
+            var resetAfterFlash = !parsed.GetValue(noReset);
+            return parsed.GetValue(watch)
+                ? RunFlashWatchAsync(
+                    sourceValue,
+                    loaderValue,
+                    target,
+                    resetAfterFlash,
+                    parsed.GetValue(Verbose),
+                    token)
+                : RunFlashAsync(
+                    sourceValue,
+                    loaderValue,
+                    target,
+                    resetAfterFlash,
+                    token);
+        });
         return command;
     }
 

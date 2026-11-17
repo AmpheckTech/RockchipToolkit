@@ -86,7 +86,11 @@ internal sealed class DeviceAccess(
                 .ConfigureAwait(false);
         }
 
-        await WaitForLoaderModeAsync(
+        await Task.Delay(
+                TimeSpan.FromSeconds(1),
+                cancellationToken)
+            .ConfigureAwait(false);
+        await WaitForDeviceAsync(
                 target,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -105,12 +109,11 @@ internal sealed class DeviceAccess(
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask WaitForLoaderModeAsync(
+    private async ValueTask WaitForDeviceAsync(
         DeviceTarget target,
         CancellationToken cancellationToken
     ) {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        var sawMaskRom = false;
         while (DateTimeOffset.UtcNow < deadline) {
             RockchipUsbMode? mode;
             try {
@@ -122,11 +125,10 @@ internal sealed class DeviceAccess(
                 mode = null;
             }
 
-            if (mode == RockchipUsbMode.Loader) {
+            if (mode is not null) {
                 return;
             }
 
-            sawMaskRom |= mode == RockchipUsbMode.MaskRom;
             await Task.Delay(
                     TimeSpan.FromMilliseconds(200),
                     cancellationToken)
@@ -134,10 +136,6 @@ internal sealed class DeviceAccess(
         }
 
         throw new InvalidOperationException(
-            sawMaskRom
-                ? "Loader transfer finished, but the device remained in " +
-                  "MaskROM. Use a valid MaskROM loader for this SoC."
-                : "Loader transfer finished, but the device did not " +
-                  "re-enumerate in Loader mode.");
+            "Loader transfer finished, but the device did not re-enumerate.");
     }
 }

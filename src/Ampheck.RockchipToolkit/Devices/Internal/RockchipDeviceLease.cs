@@ -10,7 +10,10 @@ internal sealed class RockchipDeviceLease(
     public RockchipDevice Device { get; } = device;
 
     public async ValueTask DisposeAsync() {
-        await Device.DisposeAsync().ConfigureAwait(false);
-        await provider.DisposeAsync().ConfigureAwait(false);
+        try {
+            await Device.DisposeAsync().ConfigureAwait(false);
+        } finally {
+            await provider.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

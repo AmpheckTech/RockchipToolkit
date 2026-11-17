@@ -2,6 +2,7 @@ using Ampheck.RockchipToolkit;
 using Ampheck.RockchipToolkit.Devices;
 using Ampheck.RockchipToolkit.Devices.Internal;
 using Ampheck.RockchipToolkit.Firmware.Internal;
+using Ampheck.RockchipToolkit.Images.Update;
 using Ampheck.RockchipToolkit.Protocol.RockUsb;
 using Ampheck.RockchipToolkit.Transport.Usb;
 
@@ -68,6 +69,24 @@ public sealed class FirmwareFlasher {
                 _limits,
                 cancellationToken)
             .ConfigureAwait(false);
+        if (input.SourceKind == FlashSourceKind.UpdateImage) {
+            progress?.Report(new OperationProgress(
+                ToolkitOperationStage.Verifying,
+                inputName,
+                Completed: 0,
+                Total: 0));
+            var verificationProgress = progress is null
+                ? null
+                : new FirmwareImageVerificationProgress(
+                    progress,
+                    inputName);
+            await RockchipImageVerifier.VerifyAsync(
+                    input.Location,
+                    verificationProgress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         await using var lease = await _access.OpenAsync(
                 target,
                 options.LoaderPath,

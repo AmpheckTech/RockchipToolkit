@@ -31,6 +31,7 @@ internal sealed partial class CliCommandTree {
         Root.Add(BuildReset());
         Root.Add(BuildSerial());
         Root.Add(BuildStorage());
+        Root.Add(BuildVerify());
         Root.Add(BuildWrite());
     }
 

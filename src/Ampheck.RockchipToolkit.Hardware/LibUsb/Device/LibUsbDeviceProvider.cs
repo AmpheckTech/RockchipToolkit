@@ -27,7 +27,8 @@ public sealed class LibUsbDeviceProvider : IUsbDeviceProvider {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
         var devices = new List<UsbDeviceInfo>();
-        foreach (var device in _context.List()) {
+        using var deviceList = _context.List();
+        foreach (var device in deviceList) {
             cancellationToken.ThrowIfCancellationRequested();
             var descriptor = device.Info;
             var mode = DetectMode(
@@ -72,7 +73,11 @@ public sealed class LibUsbDeviceProvider : IUsbDeviceProvider {
             return ValueTask.FromResult<IUsbTransport>(
                 new LibUsbTransport(handle, device, _options));
         } catch {
-            handle.Close();
+            try {
+                handle.Dispose();
+            } catch (Exception) {
+            }
+
             throw;
         }
     }

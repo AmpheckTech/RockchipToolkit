@@ -32,7 +32,11 @@ arkt flash update.img
 arkt flash ./firmware
 arkt flash http://example.com/update.img
 arkt flash update.img --loader loader.bin
+arkt flash update.img --watch
 ```
+
+`--watch` 监听新插入的 MaskROM，每次触发都会重新读取当前镜像；已有设备或
+存在多台匹配设备时不会自动烧录，烧录失败会停止监听，`Ctrl+C` 停止。
 
 ```bash
 arkt read dump.bin --sector 0 --count 2048
@@ -51,9 +55,11 @@ arkt reset normal
 arkt image unpack update.img ./firmware
 arkt image pack ./firmware update-new.img
 arkt image pack ./firmware update-new.img --chip RK3399
+arkt verify update.img
 ```
 
 默认不覆盖输出，使用 `--force` 覆盖。
+烧录 update image 前会自动校验结构和内嵌校验和。
 
 ## 串口
 

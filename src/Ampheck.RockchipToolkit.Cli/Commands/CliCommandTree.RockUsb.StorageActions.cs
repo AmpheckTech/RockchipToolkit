@@ -44,6 +44,23 @@ internal sealed partial class CliCommandTree {
         bool resetAfterFlash,
         CancellationToken cancellationToken
     ) {
+        await FlashOnceAsync(
+                source,
+                loaderLocation,
+                target,
+                resetAfterFlash,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return 0;
+    }
+
+    private async Task FlashOnceAsync(
+        string source,
+        string? loaderLocation,
+        DeviceTarget target,
+        bool resetAfterFlash,
+        CancellationToken cancellationToken
+    ) {
         using var progress = new OperationProgressDisplay(_console);
         await using var resolvedSource = await _inputs.ResolveAsync(
                 source,
@@ -68,7 +85,6 @@ internal sealed partial class CliCommandTree {
             .ConfigureAwait(false);
         progress.Complete();
         Console.WriteLine("Flash complete");
-        return 0;
     }
 
     private async Task<int> RunReadAsync(
