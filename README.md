@@ -1,21 +1,15 @@
 # Ampheck Rockchip Toolkit
 
-Rockchip 设备命令行工具，支持 RockUSB、串口、ADB、固件镜像和外部资产缓存。
+Rockchip 设备命令行工具，支持 RockUSB、串口、固件镜像和外部资产缓存。
 
-支持 Windows、Linux 和 macOS ARM64。
+支持 Windows（x64/ARM64）、Linux（x64/ARM64）和 macOS（ARM64）。
 
 ## 安装
 
-从 GitHub Releases 下载 `arkt`，Linux 和 macOS 下载后执行：
+从 GitHub Releases 下载对应平台的二进制并重命名为 `arkt`，Windows 为 `arkt.exe`。Linux 和 macOS 执行：
 
 ```bash
 chmod +x arkt
-```
-
-ADB 需要 Android SDK Platform Tools，也可以指定路径：
-
-```bash
-export ARKT_ADB=/opt/android-sdk/platform-tools/adb
 ```
 
 Linux 下需要配置 USB/串口权限，或者使用 `sudo` 运行。
@@ -28,6 +22,7 @@ arkt info
 arkt capability
 arkt chip info
 arkt chip id
+arkt loader MiniLoaderAll.bin
 ```
 
 多台设备可用 `--vid`、`--pid` 选择。
@@ -71,29 +66,18 @@ arkt serial send /dev/ttyUSB0 "reboot"
 
 串口由当前进程独占。`Ctrl+]` 退出监控。
 
-## ADB
-
-```bash
-arkt adb devices
-arkt adb shell uname -a
-arkt adb shell
-arkt adb push ./local.bin /tmp/local.bin
-arkt adb pull /tmp/local.bin ./local.bin
-arkt adb reboot loader
-```
-
-多台设备使用 `--serial` 选择。
-
 ## 资产
 
 第三方二进制按 manifest 下载到本地缓存，不随 ARKT 发布。缓存目录可用 `ARKT_ASSETS_DIR` 修改。
 
 ```bash
 arkt assets root
-arkt assets ensure --manifest manifests/rkbin-rk3588.toml --output ./assets
-arkt assets verify --manifest manifests/rkbin-rk3588.toml
+arkt assets ensure --manifest manifest.toml --output ./assets
+arkt assets verify --manifest manifest.toml
 arkt assets list
 arkt assets prune --dry-run
+arkt assets prune --yes
+arkt assets forget --manifest manifest.toml
 ```
 
 rkbin 从 Rockchip 上游仓库获取，授权不变。
@@ -106,11 +90,41 @@ arkt completion bash
 
 补全支持 `bash`、`zsh`、`fish` 和 `powershell`。
 
+## SDK
+
+当前尚未发布到 NuGet。外部项目可以直接引用源码项目：
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="path/to/Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+  <ProjectReference Include="path/to/Ampheck.RockchipToolkit.Hardware/Ampheck.RockchipToolkit.Hardware.csproj" />
+</ItemGroup>
+```
+
+```csharp
+using Ampheck.RockchipToolkit.Devices;
+using Ampheck.RockchipToolkit.Firmware;
+using Ampheck.RockchipToolkit.Hardware;
+
+var firmware = new FirmwareFlasher(
+    new UsbDeviceProviderFactory());
+
+await firmware.FlashAsync(
+    new DeviceTarget(),
+    "update.img",
+    options: null,
+    progress: null,
+    CancellationToken.None);
+```
+
+SDK 只接收本地文件路径。HTTP 下载、Assets 缓存和 manifest 由调用方或 ARKT CLI 处理。
+耗时操作通过 `IProgress<OperationProgress>` 返回阶段、条目和字节进度；速度与 ETA 由调用方计算。
+
 ## 构建
 
-需要 .NET 10 SDK，执行：
+需要 .NET 10 SDK。发布 CLI：
 
 ```bash
-dotnet publish Ampheck.RockchipToolkit.csproj \
+dotnet publish src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj \
   -c Release -r linux-x64 --self-contained true -o release
 ```

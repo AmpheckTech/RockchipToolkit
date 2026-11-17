@@ -1,4 +1,4 @@
-name: Release Single File
+name: Release
 
 on:
   push:
@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: >
           dotnet publish
-          Ampheck.RockchipToolkit.csproj
+          src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj
           -c Release -r ${{ matrix.rid }} --self-contained true
           --no-restore -p:Version="$VERSION"
           -o dist/arkt/${{ matrix.rid }}
@@ -131,9 +131,12 @@ jobs:
           merge-multiple: true
           path: release
 
+      - name: Copy notices
+        run: cp LICENSE NOTICE THIRD-PARTY-NOTICES.txt release/
+
       - name: Generate checksums
         working-directory: release
-        run: sha256sum * > SHA256SUMS
+        run: sha256sum -- ./* > SHA256SUMS
 
       - name: Publish release
         working-directory: release
@@ -186,4 +189,4 @@ jobs:
             exit 1
           fi
 
-          gh release upload "$TAG_NAME" * --clobber
+          gh release upload "$TAG_NAME" --clobber -- ./*

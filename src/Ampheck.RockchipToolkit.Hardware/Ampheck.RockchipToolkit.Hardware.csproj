@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ampheck.RockchipToolkit.Hardware</RootNamespace>
+    <AssemblyName>Ampheck.RockchipToolkit.Hardware</AssemblyName>
+    <PackageId>Ampheck.RockchipToolkit.Hardware</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>LibUsb, RockUSB, and serial hardware backends for Ampheck Rockchip Toolkit.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/AmpheckTech/RockchipToolkit.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <PropertyGroup>
+    <WindowsTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</WindowsTarget>
+    <WindowsTarget Condition="'$(RuntimeIdentifier)' == 'win-x64'">true</WindowsTarget>
+    <WindowsTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">true</WindowsTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsTarget)' == 'true'">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <DefineConstants>$(DefineConstants);ROCKUSB</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+    <PackageReference Include="LibUsbDotNet" Version="3.0.224" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../NOTICE" Pack="true" PackagePath="/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != 'win-x64'">
+    <Compile Remove="RockUsb/**/*.cs" />
+  </ItemGroup>
+</Project>

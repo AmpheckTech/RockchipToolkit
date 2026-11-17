@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="Ampheck.RockchipToolkit.csproj" />
+  <Project Path="src/Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+  <Project Path="src/Ampheck.RockchipToolkit.Hardware/Ampheck.RockchipToolkit.Hardware.csproj" />
+  <Project Path="src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj" />
 </Solution>

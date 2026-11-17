@@ -6,6 +6,10 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <IsPackable>false</IsPackable>
+    <Company>Ampheck</Company>
+    <Product>Ampheck Rockchip Toolkit</Product>
+    <Authors>Ampheck</Authors>
+    <Copyright>Copyright (c) 2026 Ampheck</Copyright>
     <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
   </PropertyGroup>
 </Project>

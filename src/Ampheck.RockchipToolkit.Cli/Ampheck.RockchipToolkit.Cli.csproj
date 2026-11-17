@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>arkt</AssemblyName>
+    <RootNamespace>Ampheck.RockchipToolkit.Cli</RootNamespace>
+    <Company>Ampheck</Company>
+    <Product>Ampheck Rockchip Toolkit</Product>
+    <Description>Rockchip flashing and device command-line toolkit.</Description>
+    <Copyright>Copyright (c) 2026 Ampheck</Copyright>
+    <PublishAot>true</PublishAot>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <WindowsTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</WindowsTarget>
+    <WindowsTarget Condition="'$(RuntimeIdentifier)' == 'win-x64'">true</WindowsTarget>
+    <WindowsTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">true</WindowsTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsTarget)' == 'true'">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <DefineConstants>$(DefineConstants);ROCKUSB</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ampheck.RockchipToolkit/Ampheck.RockchipToolkit.csproj" />
+    <ProjectReference Include="../Ampheck.RockchipToolkit.Hardware/Ampheck.RockchipToolkit.Hardware.csproj" />
+    <PackageReference Include="System.CommandLine" Version="2.0.13" />
+    <PackageReference Include="Tomlyn" Version="2.11.1" />
+  </ItemGroup>
+</Project>

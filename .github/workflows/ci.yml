@@ -52,7 +52,7 @@ jobs:
 
       - name: Build
         run: >
-          dotnet build Ampheck.RockchipToolkit.csproj
+          dotnet build src/Ampheck.RockchipToolkit.Cli/Ampheck.RockchipToolkit.Cli.csproj
           -c Release -r ${{ matrix.rid }} --no-restore
 
       - name: Check vulnerable dependencies
