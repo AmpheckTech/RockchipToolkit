@@ -10,5 +10,6 @@ public sealed record RockchipImageHeader(
     long FirmwareSize,
     uint SupportedChip,
     bool Signed,
-    RockchipImageKind Kind
+    RockchipImageKind Kind,
+    byte Rc4Flag = 0
 );

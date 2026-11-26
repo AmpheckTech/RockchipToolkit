@@ -39,6 +39,21 @@ public sealed class FirmwareFlasher {
         }
 
         options ??= new FirmwareFlashOptions();
+        if (options.BootloaderPath is not null &&
+            options.IdbPath is not null) {
+            throw new InvalidOperationException(
+                "Use either a raw bootloader or an IDB, not both.");
+        }
+        byte[]? idb = null;
+        var idbRequiresNewFormat = false;
+        if (options.IdbPath is not null) {
+            var idbResult = await PersistentLoader.BuildAsync(
+                    options.IdbPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            idb = idbResult.Data;
+            idbRequiresNewFormat = idbResult.RequiresNewIdb;
+        }
 
         var inputName = Path.GetFileName(firmwarePath);
         progress?.Report(new OperationProgress(
@@ -87,15 +102,27 @@ public sealed class FirmwareFlasher {
                 .ConfigureAwait(false);
         }
 
+        var loaderPath = options.LoaderPath ?? options.IdbPath;
         await using var lease = await _access.OpenAsync(
                 target,
-                options.LoaderPath,
+                loaderPath,
                 progress,
                 cancellationToken,
                 useEmbeddedLoader:
                     input.SourceKind == FlashSourceKind.UpdateImage,
                 firmwarePath: input.Location)
             .ConfigureAwait(false);
+        if (idbRequiresNewFormat) {
+            var capability = RockchipCapabilityParser.Parse(
+                await lease.Device.GetCapabilityAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false));
+            if ((capability & RockchipCapabilityFlags.NewIdb) == 0) {
+                throw new InvalidOperationException(
+                    "The device does not support the new IDB format.");
+            }
+        }
+
         var flashContext = new FirmwareFlashContext(
             lease.Device,
             progress,
@@ -104,11 +131,16 @@ public sealed class FirmwareFlasher {
         if (input.SourceKind == FlashSourceKind.UpdateImage) {
             await new UpdateImageFlasher(flashContext).FlashAsync(
                     input.Location,
+                    options.BootloaderPath,
+                    options.IdbPath is null,
+                    idb,
                     cancellationToken)
                 .ConfigureAwait(false);
         } else {
             await new DirectoryFlasher(flashContext).FlashAsync(
                     input.Location,
+                    options.BootloaderPath,
+                    idb,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -147,8 +147,9 @@ internal static class RockchipImageReader {
             0,
             0,
             U32(header, 21),
-            header[43] == 'S',
-            kind);
+            header[42] == 'S',
+            kind,
+            header[43]);
     }
 
     private static (

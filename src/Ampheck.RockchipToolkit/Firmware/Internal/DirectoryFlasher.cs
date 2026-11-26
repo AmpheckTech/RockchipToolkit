@@ -7,6 +7,8 @@ namespace Ampheck.RockchipToolkit.Firmware.Internal;
 internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
     public async Task FlashAsync(
         string sourceLocation,
+        string? bootloaderPath,
+        byte[]? idb,
         CancellationToken cancellationToken
     ) {
         var partitions = await LoadPartitionsAsync(
@@ -20,12 +22,19 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
             long Length)>();
         InputFile? bootloader = null;
         long bootloaderLength = 0;
+        if (idb is not null) {
+            FirmwareImageValidator.ValidateBootloader(
+                "IDB",
+                idb.Length,
+                partitions[0].Offset);
+        }
+
         try {
-            bootloader = await OpenBootloaderAsync(
-                    sourceLocation,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (bootloader is not null) {
+            if (bootloaderPath is not null) {
+                bootloader = await InputFile.OpenAsync(
+                        bootloaderPath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 bootloaderLength = new FileInfo(bootloader.Path).Length;
                 FirmwareImageValidator.ValidateBootloader(
                     Path.GetFileName(bootloader.Path),
@@ -69,8 +78,23 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
             }
 
             var totalBytes = images.Sum(image => image.Length) +
-                bootloaderLength;
+                bootloaderLength +
+                (idb?.Length ?? 0);
             long completedBytes = 0;
+            if (idb is not null) {
+                context.Status?.Report(new OperationProgress(
+                    ToolkitOperationStage.Writing,
+                    "IDB",
+                    Completed: 0,
+                    Total: 0));
+                await context.Device.WriteAsync(
+                        PersistentLoader.IdbSector,
+                        idb,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                completedBytes += idb.Length;
+            }
+
             if (bootloader is not null) {
                 context.Status?.Report(new OperationProgress(
                     ToolkitOperationStage.Writing,
@@ -113,21 +137,6 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
                 await image.DisposeAsync().ConfigureAwait(false);
             }
         }
-    }
-
-    private static async ValueTask<InputFile?> OpenBootloaderAsync(
-        string sourceLocation,
-        CancellationToken cancellationToken
-    ) {
-        var source = FirmwareSource.Create(sourceLocation);
-        return await source.TryOpenAsync(
-                "idbloader.img",
-                cancellationToken)
-            .ConfigureAwait(false) ??
-            await source.TryOpenAsync(
-                    "bootloader.img",
-                    cancellationToken)
-                .ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<RockchipPartition>>

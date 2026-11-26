@@ -32,11 +32,20 @@ arkt flash update.img
 arkt flash ./firmware
 arkt flash http://example.com/update.img
 arkt flash update.img --loader loader.bin
+arkt flash update.img --bootloader idbloader.img
+arkt flash update.img --idb MiniLoaderAll.bin
 arkt flash update.img --watch
 ```
 
+正常发布只需要 `update.img`，其中的 BOOT 提供 RAM Loader，包内
+`bootloader` 条目负责持久化。`--loader`、`--bootloader` 和 `--idb`
+用于独立镜像或调试场景。
+
 `--watch` 监听新插入的 MaskROM，每次触发都会重新读取当前镜像；已有设备或
 存在多台匹配设备时不会自动烧录，烧录失败会停止监听，`Ctrl+C` 停止。
+`--loader` 只下载 RAM Loader；`--bootloader` 才把启动镜像持久化到 `0x40`。
+目录烧录不再自动查找 `idbloader.img` 或 `bootloader.img`。
+`--idb` 会按 MiniLoader 的 FlashData/FlashBoot 生成并写入持久 IDB。
 
 ```bash
 arkt read dump.bin --sector 0 --count 2048

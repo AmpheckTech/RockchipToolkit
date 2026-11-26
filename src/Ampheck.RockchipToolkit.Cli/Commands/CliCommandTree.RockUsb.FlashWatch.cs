@@ -18,6 +18,8 @@ internal sealed partial class CliCommandTree {
     private async Task<int> RunFlashWatchAsync(
         string source,
         string? loaderLocation,
+        string? bootloaderLocation,
+        string? idbLocation,
         DeviceTarget target,
         bool resetAfterFlash,
         bool verbose,
@@ -37,6 +39,20 @@ internal sealed partial class CliCommandTree {
             throw new FileNotFoundException(
                 $"Loader source '{loaderLocation}' was not found.",
                 loaderLocation);
+        }
+        if (bootloaderLocation is not null &&
+            !IsHttpLocation(bootloaderLocation) &&
+            !File.Exists(bootloaderLocation)) {
+            throw new FileNotFoundException(
+                $"Bootloader source '{bootloaderLocation}' was not found.",
+                bootloaderLocation);
+        }
+        if (idbLocation is not null &&
+            !IsHttpLocation(idbLocation) &&
+            !File.Exists(idbLocation)) {
+            throw new FileNotFoundException(
+                $"IDB source '{idbLocation}' was not found.",
+                idbLocation);
         }
 
         await using var provider = new UsbDeviceProviderFactory().Create(
@@ -125,6 +141,8 @@ internal sealed partial class CliCommandTree {
                     var succeeded = await FlashWatchedDeviceAsync(
                             source,
                             loaderLocation,
+                            bootloaderLocation,
+                            idbLocation,
                             target,
                             current[0],
                             resetAfterFlash,
@@ -230,6 +248,8 @@ internal sealed partial class CliCommandTree {
     private async Task<bool> FlashWatchedDeviceAsync(
         string source,
         string? loaderLocation,
+        string? bootloaderLocation,
+        string? idbLocation,
         DeviceTarget target,
         DeviceDescriptor device,
         bool resetAfterFlash,
@@ -251,6 +271,19 @@ internal sealed partial class CliCommandTree {
                         cancellationToken)
                     .ConfigureAwait(false);
             }
+            if (bootloaderLocation is not null &&
+                File.Exists(bootloaderLocation)) {
+                await WaitForStableFileAsync(
+                        bootloaderLocation,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            if (idbLocation is not null && File.Exists(idbLocation)) {
+                await WaitForStableFileAsync(
+                        idbLocation,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             _console.WriteStatus(
                 $"New MaskROM {WatchDeviceLabel(device)}; flashing {source}");
@@ -258,6 +291,8 @@ internal sealed partial class CliCommandTree {
             await FlashOnceAsync(
                     source,
                     loaderLocation,
+                    bootloaderLocation,
+                    idbLocation,
                     target,
                     resetAfterFlash,
                     cancellationToken)

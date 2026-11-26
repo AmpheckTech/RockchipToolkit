@@ -40,6 +40,8 @@ internal sealed partial class CliCommandTree {
     private async Task<int> RunFlashAsync(
         string source,
         string? loaderLocation,
+        string? bootloaderLocation,
+        string? idbLocation,
         DeviceTarget target,
         bool resetAfterFlash,
         CancellationToken cancellationToken
@@ -47,6 +49,8 @@ internal sealed partial class CliCommandTree {
         await FlashOnceAsync(
                 source,
                 loaderLocation,
+                bootloaderLocation,
+                idbLocation,
                 target,
                 resetAfterFlash,
                 cancellationToken)
@@ -57,6 +61,8 @@ internal sealed partial class CliCommandTree {
     private async Task FlashOnceAsync(
         string source,
         string? loaderLocation,
+        string? bootloaderLocation,
+        string? idbLocation,
         DeviceTarget target,
         bool resetAfterFlash,
         CancellationToken cancellationToken
@@ -72,12 +78,24 @@ internal sealed partial class CliCommandTree {
                 progress,
                 cancellationToken)
             .ConfigureAwait(false);
+        await using var resolvedBootloader = await _inputs.ResolveOptionalAsync(
+                bootloaderLocation,
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+        await using var resolvedIdb = await _inputs.ResolveOptionalAsync(
+                idbLocation,
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
         var firmware = CreateFirmwareFlasher();
         await firmware.FlashAsync(
                 target,
                 resolvedSource.Path,
                 new FirmwareFlashOptions {
                     LoaderPath = resolvedLoader?.Path,
+                    BootloaderPath = resolvedBootloader?.Path,
+                    IdbPath = resolvedIdb?.Path,
                     ResetAfterFlash = resetAfterFlash
                 },
                 progress,

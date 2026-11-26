@@ -67,11 +67,11 @@ internal sealed partial class CliCommandTree {
     private Command BuildLoader() {
         var loader = CreateArgument<string>(
             "loader",
-            "Loader file, URL, or UNC path.");
+            "RAM loader file, URL, or UNC path.");
         var options = new RockUsbCommandOptions();
         var command = new Command(
             "loader",
-            "Download a loader while the device is in MaskROM mode.") {
+            "Download a RAM loader while the device is in MaskROM mode.") {
             loader
         };
         options.AddTo(command);
@@ -143,6 +143,12 @@ internal sealed partial class CliCommandTree {
         var watch = new Option<bool>("--watch", "-w") {
             Description = "Flash each new MaskROM device as it appears."
         };
+        var bootloader = new Option<string?>("--bootloader") {
+            Description = "Persist a bootloader at sector 0x40."
+        };
+        var idb = new Option<string?>("--idb") {
+            Description = "Build and persist an IDB from a MiniLoader."
+        };
         var noReset = new Option<bool>("--no-reset") {
             Description = "Do not reset after flashing."
         };
@@ -152,18 +158,24 @@ internal sealed partial class CliCommandTree {
             "Flash an update image or firmware directory.") {
             source,
             watch,
+            bootloader,
+            idb,
             noReset
         };
         options.AddTo(command);
         command.SetAction((parsed, token) => {
             var sourceValue = parsed.GetValue(source)!;
             var loaderValue = parsed.GetValue(options.Loader!);
+            var bootloaderValue = parsed.GetValue(bootloader);
+            var idbValue = parsed.GetValue(idb);
             var target = options.ReadTarget(parsed);
             var resetAfterFlash = !parsed.GetValue(noReset);
             return parsed.GetValue(watch)
                 ? RunFlashWatchAsync(
                     sourceValue,
                     loaderValue,
+                    bootloaderValue,
+                    idbValue,
                     target,
                     resetAfterFlash,
                     parsed.GetValue(Verbose),
@@ -171,6 +183,8 @@ internal sealed partial class CliCommandTree {
                 : RunFlashAsync(
                     sourceValue,
                     loaderValue,
+                    bootloaderValue,
+                    idbValue,
                     target,
                     resetAfterFlash,
                     token);

@@ -35,7 +35,7 @@ internal sealed class RockUsbCommandOptions {
             result.Tokens.Single().Value);
         if (includeLoader) {
             Loader = new("--loader", "-l") {
-                Description = "Download this loader before the command."
+                Description = "Download this RAM loader before the command."
             };
         }
     }
