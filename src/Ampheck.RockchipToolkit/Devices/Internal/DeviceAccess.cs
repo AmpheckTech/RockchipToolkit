@@ -86,11 +86,7 @@ internal sealed class DeviceAccess(
                 .ConfigureAwait(false);
         }
 
-        await Task.Delay(
-                TimeSpan.FromSeconds(1),
-                cancellationToken)
-            .ConfigureAwait(false);
-        await WaitForDeviceAsync(
+        await WaitForLoaderReadyAsync(
                 target,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -109,33 +105,47 @@ internal sealed class DeviceAccess(
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask WaitForDeviceAsync(
+    private async ValueTask WaitForLoaderReadyAsync(
         DeviceTarget target,
         CancellationToken cancellationToken
     ) {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        Exception? lastError = null;
         while (DateTimeOffset.UtcNow < deadline) {
-            RockchipUsbMode? mode;
             try {
-                mode = await connector.GetModeAsync(
+                var session = await connector.OpenAsync(
                         target,
                         cancellationToken)
                     .ConfigureAwait(false);
-            } catch (IOException) {
-                mode = null;
-            }
+                await using (session.Provider) {
+                    await using var probe = new RockchipDevice(
+                        session.Transport,
+                        loaderDownloader,
+                        TimeSpan.FromMilliseconds(500));
+                    await probe.ReadAsync(
+                            0,
+                            1,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
-            if (mode is not null) {
                 return;
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception error) {
+                lastError = error;
             }
 
             await Task.Delay(
-                    TimeSpan.FromMilliseconds(200),
+                    TimeSpan.FromMilliseconds(100),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
         throw new InvalidOperationException(
-            "Loader transfer finished, but the device did not re-enumerate.");
+            "Loader transfer finished, but the Loader did not become " +
+            "ready for commands. The device may have booted from the " +
+            "embedded boot image.",
+            lastError);
     }
 }

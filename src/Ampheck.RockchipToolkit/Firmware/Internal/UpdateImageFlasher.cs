@@ -24,6 +24,25 @@ internal sealed class UpdateImageFlasher(FirmwareFlashContext context) {
                 update.ReadParameterBytes(parameterEntry))
             .TrimEnd('\0');
         var partitions = RockchipParameterParser.Parse(parameter);
+        var bootloaderEntry = update.FindEntry("bootloader");
+        if (bootloaderEntry is not null &&
+            (bootloaderEntry.Size == 0 ||
+                bootloaderEntry.FileName.Equals(
+                    "RESERVED",
+                    StringComparison.OrdinalIgnoreCase) ||
+                bootloaderEntry.FileName.Equals(
+                    "SELF",
+                    StringComparison.OrdinalIgnoreCase))) {
+            bootloaderEntry = null;
+        }
+
+        if (bootloaderEntry is not null) {
+            FirmwareImageValidator.ValidateBootloader(
+                bootloaderEntry.FileName,
+                bootloaderEntry.Size,
+                partitions[0].Offset);
+        }
+
         var images = new List<(
             RockchipPartition Partition,
             RockchipUpdateEntry Entry)>();
@@ -44,13 +63,32 @@ internal sealed class UpdateImageFlasher(FirmwareFlashContext context) {
             images.Add((partition, entry));
         }
 
-        if (images.Count == 0) {
+        if (images.Count == 0 && bootloaderEntry is null) {
             throw new InvalidDataException(
                 "The update image contains no writable partition images.");
         }
 
-        var totalBytes = images.Sum(image => image.Entry.Size);
+        var totalBytes = images.Sum(image => image.Entry.Size) +
+            (bootloaderEntry?.Size ?? 0);
         long completedBytes = 0;
+        if (bootloaderEntry is not null) {
+            context.Status?.Report(new OperationProgress(
+                ToolkitOperationStage.Writing,
+                bootloaderEntry.FileName,
+                Completed: 0,
+                Total: 0));
+            await using var image = update.OpenEntryStream(bootloaderEntry);
+            await CreateWriter(completedBytes, totalBytes)
+                .WriteAsync(
+                    image,
+                    new DeviceWriteOptions(
+                        FirmwareImageValidator.BootloaderSector,
+                        EraseBeforeWrite: true),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            completedBytes += bootloaderEntry.Size;
+        }
+
         foreach (var (partition, entry) in images) {
             context.Status?.Report(new OperationProgress(
                 ToolkitOperationStage.Writing,

@@ -8,6 +8,7 @@ internal static class RockchipImageKindExtensions {
     public static bool IsStandaloneBootImage(this RockchipImageKind kind) {
         return kind is
             RockchipImageKind.Boot or
+            RockchipImageKind.Loader or
             RockchipImageKind.Rkns or
             RockchipImageKind.Rkss;
     }

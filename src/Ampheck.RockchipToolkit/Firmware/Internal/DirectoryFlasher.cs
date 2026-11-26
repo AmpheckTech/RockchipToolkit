@@ -18,7 +18,21 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
             string ImageName,
             InputFile File,
             long Length)>();
+        InputFile? bootloader = null;
+        long bootloaderLength = 0;
         try {
+            bootloader = await OpenBootloaderAsync(
+                    sourceLocation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (bootloader is not null) {
+                bootloaderLength = new FileInfo(bootloader.Path).Length;
+                FirmwareImageValidator.ValidateBootloader(
+                    Path.GetFileName(bootloader.Path),
+                    bootloaderLength,
+                    partitions[0].Offset);
+            }
+
             foreach (var partition in partitions) {
                 var imageName = $"{partition.Name}.img";
                 var image = await FirmwareSource.Create(sourceLocation)
@@ -48,14 +62,32 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
                 }
             }
 
-            if (images.Count == 0) {
+            if (images.Count == 0 && bootloader is null) {
                 throw new InvalidDataException(
                     "The firmware directory contains no partition images " +
                     "listed by parameter.txt.");
             }
 
-            var totalBytes = images.Sum(image => image.Length);
+            var totalBytes = images.Sum(image => image.Length) +
+                bootloaderLength;
             long completedBytes = 0;
+            if (bootloader is not null) {
+                context.Status?.Report(new OperationProgress(
+                    ToolkitOperationStage.Writing,
+                    Path.GetFileName(bootloader.Path),
+                    Completed: 0,
+                    Total: 0));
+                await CreateWriter(completedBytes, totalBytes)
+                    .WriteAsync(
+                        bootloader.Path,
+                        new DeviceWriteOptions(
+                            FirmwareImageValidator.BootloaderSector,
+                            EraseBeforeWrite: true),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                completedBytes += bootloaderLength;
+            }
+
             foreach (var (partition, imageName, image, imageLength) in images) {
                 context.Status?.Report(new OperationProgress(
                     ToolkitOperationStage.Writing,
@@ -73,10 +105,29 @@ internal sealed class DirectoryFlasher(FirmwareFlashContext context) {
                 completedBytes += imageLength;
             }
         } finally {
+            if (bootloader is not null) {
+                await bootloader.DisposeAsync().ConfigureAwait(false);
+            }
+
             foreach (var (_, _, image, _) in images) {
                 await image.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    private static async ValueTask<InputFile?> OpenBootloaderAsync(
+        string sourceLocation,
+        CancellationToken cancellationToken
+    ) {
+        var source = FirmwareSource.Create(sourceLocation);
+        return await source.TryOpenAsync(
+                "idbloader.img",
+                cancellationToken)
+            .ConfigureAwait(false) ??
+            await source.TryOpenAsync(
+                    "bootloader.img",
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<RockchipPartition>>
